@@ -30,6 +30,7 @@ class AWSSettings(BaseModel):
 
 class ClerkSettings(BaseModel):
     secret_key: str
+    webhook_secret: str
     jwks_url: str
 
 
@@ -58,6 +59,7 @@ class Settings(BaseSettings):
 
     # Clerk
     clerk_secret_key: str = ""
+    clerk_webhook_secret: str = ""  # from Clerk dashboard → Webhooks → Signing Secret
     clerk_jwks_url: str = ""  # e.g. https://<your-clerk-domain>/.well-known/jwks.json
 
     # AWS
@@ -101,6 +103,7 @@ class Settings(BaseSettings):
     def clerk(self) -> ClerkSettings:
         return ClerkSettings(
             secret_key=self.clerk_secret_key,
+            webhook_secret=self.clerk_webhook_secret,
             jwks_url=self.clerk_jwks_url,
         )
 

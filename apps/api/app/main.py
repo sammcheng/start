@@ -20,9 +20,7 @@ PRODUCTION_ORIGIN = "https://hackmarket.io"
 async def lifespan(app: FastAPI):  # noqa: ARG001
     logger.info("Starting Hackmarket API (env=%s)", settings.environment)
     yield
-    # Close the shared Redis connection pool on shutdown
     from app.dependencies import _redis_client
-
     await _redis_client.aclose()
     logger.info("Shutdown complete")
 
@@ -56,8 +54,13 @@ app.add_middleware(
 setup_error_handlers(app)
 
 # ---------------------------------------------------------------------------
-# Routers — include here as they are created
+# Routers
 # ---------------------------------------------------------------------------
+from app.routers import auth  # noqa: E402
+
+app.include_router(auth.router, prefix="/v1")
+
+# Future routers — uncomment as they are created:
 # from app.routers import tools, users, api_keys
 # app.include_router(users.router, prefix="/v1/users", tags=["users"])
 # app.include_router(tools.router, prefix="/v1/tools", tags=["tools"])

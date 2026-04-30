@@ -1,13 +1,14 @@
 import logging
 import time
 from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
 from typing import Annotated
 
 import httpx
 import redis.asyncio as aioredis
 from fastapi import Depends, Header, HTTPException, status
 from jose import JWTError, jwt
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
@@ -53,9 +54,9 @@ async def get_redis() -> aioredis.Redis:
 # Clerk JWT verification
 # ---------------------------------------------------------------------------
 
-# Simple in-memory JWKS cache: {"keys": [...], "fetched_at": float}
+# In-memory JWKS cache: {"keys": [...], "fetched_at": float}
 _jwks_cache: dict = {}
-_JWKS_TTL = 3600  # re-fetch keys every hour
+_JWKS_TTL = 3600  # seconds before re-fetching
 
 
 async def _get_jwks() -> list[dict]:
@@ -81,7 +82,7 @@ async def _get_jwks() -> list[dict]:
 
 
 async def _verify_clerk_jwt(token: str) -> dict:
-    """Validate a Clerk JWT and return its claims."""
+    """Validate a Clerk JWT and return its decoded claims."""
     try:
         header = jwt.get_unverified_header(token)
     except JWTError as exc:
@@ -93,8 +94,9 @@ async def _verify_clerk_jwt(token: str) -> dict:
     kid = header.get("kid")
     keys = await _get_jwks()
     jwk = next((k for k in keys if k.get("kid") == kid), None)
+
     if jwk is None:
-        # Key not found — JWKS may have rotated; force a refresh and retry once
+        # Key may have rotated — flush cache and retry once
         _jwks_cache.clear()
         keys = await _get_jwks()
         jwk = next((k for k in keys if k.get("kid") == kid), None)
@@ -114,21 +116,6 @@ async def _verify_clerk_jwt(token: str) -> dict:
         ) from exc
 
     return claims
-
-
-async def _fetch_clerk_user(clerk_id: str) -> dict:
-    """Fetch a user's profile from Clerk's REST API."""
-    url = f"https://api.clerk.com/v1/users/{clerk_id}"
-    headers = {"Authorization": f"Bearer {settings.clerk_secret_key}"}
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(url, headers=headers)
-    if resp.status_code == 404:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "USER_NOT_FOUND", "message": "Clerk user does not exist."},
-        )
-    resp.raise_for_status()
-    return resp.json()
 
 
 def _extract_bearer(authorization: str | None) -> str:
@@ -151,52 +138,26 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """
-    Validate the Clerk Bearer JWT and return the matching User row.
-    Creates the user on first login by fetching their profile from Clerk.
+    Validate the Clerk Bearer JWT and return the matching active User row.
+    User creation is handled by the Clerk webhook (POST /auth/webhook).
+    Raises 401 if the token is invalid or the user is not found / inactive.
     """
     token = _extract_bearer(authorization)
     claims = await _verify_clerk_jwt(token)
     clerk_id: str = claims["sub"]
 
-    result = await db.execute(select(User).where(User.clerk_id == clerk_id))
+    result = await db.execute(
+        select(User).where(User.clerk_id == clerk_id, User.is_active.is_(True))
+    )
     user = result.scalar_one_or_none()
-    if user:
-        return user
-
-    # First login — pull profile from Clerk and create local row
-    logger.info("Creating local user for Clerk ID %s", clerk_id)
-    clerk_data = await _fetch_clerk_user(clerk_id)
-
-    primary_email = next(
-        (
-            e["email_address"]
-            for e in clerk_data.get("email_addresses", [])
-            if e["id"] == clerk_data.get("primary_email_address_id")
-        ),
-        None,
-    )
-    if not primary_email:
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "NO_EMAIL", "message": "Clerk account has no verified email."},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "USER_NOT_FOUND",
+                "message": "No active account found. Please complete registration.",
+            },
         )
-
-    username = clerk_data.get("username") or clerk_id
-    display_name = (
-        f"{clerk_data.get('first_name', '')} {clerk_data.get('last_name', '')}".strip()
-        or username
-    )
-
-    user = User(
-        clerk_id=clerk_id,
-        email=primary_email,
-        username=username,
-        display_name=display_name,
-        avatar_url=clerk_data.get("image_url"),
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
     return user
 
 
@@ -246,18 +207,15 @@ async def validate_api_key(
             detail={"code": "INVALID_API_KEY", "message": "API key is invalid or inactive."},
         )
 
-    # Load the associated user
-    user_result = await db.execute(select(User).where(User.id == api_key.user_id))
+    user_result = await db.execute(
+        select(User).where(User.id == api_key.user_id, User.is_active.is_(True))
+    )
     user = user_result.scalar_one_or_none()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "USER_NOT_FOUND", "message": "API key owner not found."},
         )
-
-    # Update last_used_at without loading the full row again
-    from sqlalchemy import update
-    from datetime import datetime, timezone
 
     await db.execute(
         update(APIKey)

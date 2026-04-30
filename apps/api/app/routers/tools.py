@@ -7,6 +7,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_user, get_db, get_redis, require_seller
+from app.exceptions import AppError, Forbidden, ToolNotFoundError
 from app.models.tool import ToolStatus
 from app.models.user import User
 from app.schemas.tool import (
@@ -16,7 +17,8 @@ from app.schemas.tool import (
     ToolResponse,
     ToolUpdate,
 )
-from app.services import tool_service
+from app.schemas.docs import ToolDocumentation
+from app.services import docs_service, tool_service
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
@@ -31,6 +33,7 @@ def _parse_filters(
     min_price: float | None = Query(None, ge=0),
     max_price: float | None = Query(None, ge=0),
     search: str | None = Query(None, max_length=100),
+    is_featured: bool | None = Query(None),
     sort_by: str = Query("newest", pattern="^(popular|newest|price_low|price_high)$"),
 ) -> ToolFilters:
     return ToolFilters(
@@ -38,6 +41,7 @@ def _parse_filters(
         min_price=min_price,
         max_price=max_price,
         search=search,
+        is_featured=is_featured,
         sort_by=sort_by,  # type: ignore[arg-type]
     )
 
@@ -126,6 +130,26 @@ async def list_tools(
 
 
 # ---------------------------------------------------------------------------
+# GET /tools/{slug}/docs
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{slug}/docs",
+    response_model=ToolDocumentation,
+    summary="Get generated API documentation for a tool",
+)
+async def get_tool_docs(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+) -> ToolDocumentation:
+    tool = await tool_service.get_tool_by_slug(db, slug)
+    if not tool:
+        raise ToolNotFoundError(slug)
+    return docs_service.generate_tool_docs(tool)
+
+
+# ---------------------------------------------------------------------------
 # GET /tools/{slug}
 # ---------------------------------------------------------------------------
 
@@ -143,10 +167,7 @@ async def get_tool(
     """Public endpoint. Returns full tool details and increments the view counter."""
     tool = await tool_service.get_tool_by_slug(db, slug)
     if not tool:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "TOOL_NOT_FOUND", "message": f"No tool with slug '{slug}'."},
-        )
+        raise ToolNotFoundError(slug)
 
     view_count = await tool_service.increment_view_counter(redis, slug)
     return ToolResponse.model_validate(tool).model_copy(update={"view_count": view_count})
@@ -172,22 +193,14 @@ async def update_tool(
     """Update allowed fields. Caller must own the tool. Blocked while in 'processing'."""
     tool = await tool_service.get_tool_by_id(db, tool_id)
     if not tool:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "TOOL_NOT_FOUND", "message": "Tool not found."},
-        )
+        raise ToolNotFoundError(str(tool_id))
     if tool.seller_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "NOT_OWNER", "message": "You do not own this tool."},
-        )
+        raise Forbidden("You do not own this tool.")
     if tool.status == ToolStatus.processing:
-        raise HTTPException(
+        raise AppError(
+            message="Cannot update a tool while it is being processed.",
             status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "TOOL_PROCESSING",
-                "message": "Cannot update a tool while it is being processed.",
-            },
+            error_code="tool_processing",
         )
 
     updated = await tool_service.update_tool(db, tool, body)
@@ -216,15 +229,9 @@ async def delete_tool(
     """
     tool = await tool_service.get_tool_by_id(db, tool_id)
     if not tool:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "TOOL_NOT_FOUND", "message": "Tool not found."},
-        )
+        raise ToolNotFoundError(str(tool_id))
     if tool.seller_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "NOT_OWNER", "message": "You do not own this tool."},
-        )
+        raise Forbidden("You do not own this tool.")
 
     if await tool_service.has_active_consumers(db, tool_id):
         import logging

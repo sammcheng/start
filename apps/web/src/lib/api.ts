@@ -1,5 +1,12 @@
-const API_BASE =
+export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/v1";
+
+export function getGatewayBaseUrl(): string {
+  if (API_BASE.endsWith("/v1")) {
+    return `${API_BASE.slice(0, -3)}/api/v1`;
+  }
+  return `${API_BASE}/api/v1`;
+}
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -10,7 +17,8 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
-    public readonly details: Record<string, unknown> = {}
+    public readonly details: Record<string, unknown> = {},
+    public readonly requestId: string | null = null
   ) {
     super(message);
     this.name = "ApiError";
@@ -68,12 +76,56 @@ async function request<T>(
   }
 
   if (!res.ok) {
-    const err = (data as { error?: { code: string; message: string; details?: Record<string, unknown> } })?.error;
+    const err = (data as { error?: { code: string; message: string; details?: Record<string, unknown>; request_id?: string | null } })?.error;
     throw new ApiError(
       res.status,
       err?.code ?? "UNKNOWN_ERROR",
       err?.message ?? "Request failed",
-      err?.details ?? {}
+      err?.details ?? {},
+      err?.request_id ?? null
+    );
+  }
+
+  return data as T;
+}
+
+async function requestFormData<T>(
+  method: string,
+  path: string,
+  body: FormData,
+  options: RequestOptions = {}
+): Promise<T> {
+  const headers: Record<string, string> = {};
+
+  if (options.token) {
+    headers["Authorization"] = `Bearer ${options.token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers,
+    body,
+    cache: options.cache,
+    next: options.next,
+  });
+
+  if (res.status === 204) return undefined as T;
+
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    throw new ApiError(res.status, "PARSE_ERROR", "Failed to parse response");
+  }
+
+  if (!res.ok) {
+    const err = (data as { error?: { code: string; message: string; details?: Record<string, unknown>; request_id?: string | null } })?.error;
+    throw new ApiError(
+      res.status,
+      err?.code ?? "UNKNOWN_ERROR",
+      err?.message ?? "Request failed",
+      err?.details ?? {},
+      err?.request_id ?? null
     );
   }
 
@@ -90,6 +142,9 @@ export const api = {
   },
   post<T>(path: string, body: unknown, options?: RequestOptions): Promise<T> {
     return request<T>("POST", path, body, options);
+  },
+  postFormData<T>(path: string, body: FormData, options?: RequestOptions): Promise<T> {
+    return requestFormData<T>("POST", path, body, options);
   },
   put<T>(path: string, body: unknown, options?: RequestOptions): Promise<T> {
     return request<T>("PUT", path, body, options);

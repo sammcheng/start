@@ -18,15 +18,15 @@ const CAT_COLORS: Record<string, string> = {
 };
 
 const SNIPPETS = [
-  { text: "POST /v1/tools/sentiment-ai/run  → 200  87ms  $0.0001", left: "4%",  delay: "0s",   dur: "19s" },
+  { text: "POST /api/v1/tools/sentiment-ai  → 200  87ms  $0.0001", left: "4%",  delay: "0s",   dur: "19s" },
   { text: '{"sentiment":"positive","confidence":0.947}',             left: "18%", delay: "6s",   dur: "23s" },
   { text: "X-Api-Key: hm_live_4xkQ8...",                            left: "36%", delay: "2s",   dur: "17s" },
   { text: "GET /v1/tools?category=nlp&sort_by=popular  → 200",      left: "54%", delay: "9s",   dur: "21s" },
   { text: 'import hackmarket; tool.run(text="hello world")',         left: "70%", delay: "4s",   dur: "25s" },
   { text: "200 OK · 94ms · $0.0008 · model: gpt-4-turbo",          left: "82%", delay: "13s",  dur: "18s" },
-  { text: "curl -X POST api.hackmarket.io/tools/img-classifier/run", left: "12%", delay: "16s",  dur: "22s" },
+  { text: "curl -X POST api.hackmarket.io/api/v1/tools/img-classifier", left: "12%", delay: "16s",  dur: "22s" },
   { text: '{"tokens_used":847,"cost_usd":0.0041}',                  left: "44%", delay: "11s",  dur: "20s" },
-  { text: "POST /v1/tools/code-review/run  → 200  1240ms",          left: "62%", delay: "7s",   dur: "26s" },
+  { text: "POST /api/v1/tools/code-review  → 200  1240ms",          left: "62%", delay: "7s",   dur: "26s" },
   { text: "response = requests.post(endpoint, json={'input':q})",    left: "88%", delay: "3s",   dur: "16s" },
 ];
 
@@ -166,52 +166,6 @@ function useCountUp(target: number, active: boolean, duration = 2200) {
 // Sub-components
 // ─────────────────────────────────────────────────────────────────────────────
 
-function NavBar() {
-  return (
-    <nav
-      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 border-b backdrop-blur-md"
-      style={{ background: "rgba(10,10,10,0.85)", borderColor: "var(--border)" }}
-    >
-      <span
-        className="text-base font-bold tracking-tight"
-        style={{ fontFamily: "var(--font-display)", color: "var(--text)" }}
-      >
-        Hackmarket
-      </span>
-      <div className="hidden sm:flex items-center gap-6">
-        {[["Marketplace", "/marketplace"], ["Docs", "#"], ["Pricing", "#"]].map(
-          ([label, href]) => (
-            <Link
-              key={label}
-              href={href}
-              className="text-sm transition-colors hover:text-white"
-              style={{ color: "var(--muted)" }}
-            >
-              {label}
-            </Link>
-          )
-        )}
-      </div>
-      <div className="flex items-center gap-3">
-        <Link
-          href="/sign-in"
-          className="text-sm hidden sm:inline transition-colors hover:text-white"
-          style={{ color: "var(--muted)" }}
-        >
-          Sign in
-        </Link>
-        <Link
-          href="/sign-up"
-          className="text-sm px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90 active:scale-[0.97]"
-          style={{ background: "var(--blue)", color: "#fff" }}
-        >
-          Get started
-        </Link>
-      </div>
-    </nav>
-  );
-}
-
 function FloatingSnippets() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -237,7 +191,7 @@ function FloatingSnippets() {
 function HeroSection() {
   return (
     <section
-      className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-20 pb-16 text-center overflow-hidden"
+      className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-10 pb-16 text-center overflow-hidden"
       style={{ background: "var(--bg)" }}
     >
       {/* Radial spotlight */}
@@ -274,7 +228,7 @@ function HeroSection() {
         <h1 className="animate-fade-up delay-100">
           <span
             className="block text-5xl sm:text-6xl md:text-7xl font-bold italic leading-[1.05] tracking-tight mb-3"
-            style={{ fontFamily: "var(--font-serif)", color: "var(--text)" }}
+            style={{ fontFamily: "var(--font-display)", color: "var(--text)" }}
           >
             Every hackathon builds tools
             <br />
@@ -283,8 +237,7 @@ function HeroSection() {
           <span
             className="block text-5xl sm:text-6xl md:text-7xl font-semibold leading-[1.05] tracking-tight mt-1"
             style={{
-              fontFamily: "var(--font-serif)",
-              fontStyle: "italic",
+              fontFamily: "var(--font-display)",
               background: "linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
@@ -531,7 +484,7 @@ function HowItWorks() {
 
 function MiniToolCard({ tool }: { tool: Tool }) {
   const color = CAT_COLORS[tool.category] ?? "#6b7280";
-  const price = parseFloat(tool.price_per_request);
+  const price = parseFloat(tool.price_per_request ?? "0");
   const priceStr = price === 0 ? "Free" : price < 0.01 ? `$${price.toFixed(4)}` : `$${price.toFixed(3)}`;
   const totalStr =
     tool.total_requests >= 1000
@@ -720,7 +673,7 @@ function LandingDemo() {
               className="text-xs font-mono"
               style={{ color: "var(--faint)" }}
             >
-              POST /v1/tools/sentiment-ai/run
+              POST /api/v1/tools/sentiment-ai
             </span>
             <span
               className="text-xs font-mono px-2 py-0.5 rounded"
@@ -1221,7 +1174,6 @@ export default function LandingPage({ featuredTools }: { featuredTools: Tool[] }
 
   return (
     <div style={{ background: "var(--bg)", color: "var(--text)" }}>
-      <NavBar />
       <HeroSection />
       <TickerBand />
       <HowItWorks />

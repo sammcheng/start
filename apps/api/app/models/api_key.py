@@ -19,7 +19,7 @@ class APIKey(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     key_hash: Mapped[str] = mapped_column(String)
-    key_prefix: Mapped[str] = mapped_column(String(8))
+    key_prefix: Mapped[str] = mapped_column(String(16))
     name: Mapped[str] = mapped_column(String(50))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -47,8 +47,8 @@ function formatCount(n: number): string {
   return String(n);
 }
 
-function formatPrice(p: string): string {
-  const n = parseFloat(p);
+function formatPrice(p: string | null): string {
+  const n = parseFloat(p ?? "0");
   if (n === 0) return "Free";
   if (n < 0.001) return `$${n.toFixed(6)}`;
   if (n < 0.01) return `$${n.toFixed(4)}`;
@@ -186,8 +186,8 @@ function ToolCard({ tool, index }: { tool: Tool; index: number }) {
               <img
                 src={tool.seller.avatar_url}
                 alt=""
-                className="w-5 h-5 rounded-full object-cover ring-1"
-                style={{ ringColor: "var(--border)" }}
+                className="w-5 h-5 rounded-full object-cover border"
+                style={{ borderColor: "var(--border)" }}
               />
             ) : (
               <div
@@ -333,7 +333,7 @@ export default function MarketplaceClient({
       setLoading(true);
       setError(null);
       try {
-        const filters: ToolFilters & { page: number; limit: number } = {
+        const filters: Record<string, unknown> = {
           sort_by: sort,
           page: pg,
           limit: 20,
@@ -342,7 +342,7 @@ export default function MarketplaceClient({
         if (cat !== "all") filters.category = cat;
 
         const result = await api.get<ToolListResponse>(
-          `/tools${buildQuery(filters as Record<string, unknown>)}`
+          `/tools${buildQuery(filters)}`
         );
         setData(result);
       } catch {
@@ -378,7 +378,7 @@ export default function MarketplaceClient({
         className="border-b"
         style={{ borderColor: "var(--border)" }}
       >
-        <div className="max-w-7xl mx-auto px-6 py-14">
+        <div className="max-w-7xl mx-auto px-6 py-10">
           <p
             className="text-xs font-mono uppercase tracking-widest mb-3 animate-fade-up"
             style={{ color: "var(--blue)" }}
@@ -440,7 +440,7 @@ export default function MarketplaceClient({
         className="border-b sticky top-0 z-10 backdrop-blur-sm"
         style={{
           borderColor: "var(--border)",
-          background: "rgba(10,10,10,0.85)",
+          background: "rgba(244,243,239,.92)",
         }}
       >
         <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4 overflow-x-auto">

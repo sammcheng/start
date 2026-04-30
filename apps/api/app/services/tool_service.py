@@ -8,6 +8,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.dependencies import AsyncSessionLocal
 from app.models.tool import Tool, ToolStatus
 from app.models.usage_log import UsageLog
 from app.schemas.tool import ToolCreate, ToolFilters, ToolUpdate
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 _VIEW_KEY_PREFIX = "tool:views:"
 _VIEW_FLUSH_THRESHOLD = 50  # flush to DB every N increments (future background task hook)
+_REQUEST_COUNT_KEY_PREFIX = "tool:requests:"
+_REQUEST_FLUSH_THRESHOLD = 25
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +78,29 @@ async def get_view_counts(redis: Redis, slugs: list[str]) -> dict[str, int]:
             await pipe.get(f"{_VIEW_KEY_PREFIX}{slug}")
         results = await pipe.execute()
     return {slug: int(v) if v else 0 for slug, v in zip(slugs, results)}
+
+
+async def increment_total_requests(redis: Redis, tool_id: uuid.UUID) -> int:
+    key = f"{_REQUEST_COUNT_KEY_PREFIX}{tool_id}"
+    count: int = await redis.incr(key)
+    return count
+
+
+async def flush_total_requests_if_needed(redis: Redis, tool_id: uuid.UUID) -> None:
+    key = f"{_REQUEST_COUNT_KEY_PREFIX}{tool_id}"
+    raw = await redis.get(key)
+    pending = int(raw) if raw else 0
+    if pending < _REQUEST_FLUSH_THRESHOLD:
+        return
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Tool).where(Tool.id == tool_id))
+        tool = result.scalar_one_or_none()
+        if tool is None:
+            return
+        tool.total_requests += pending
+        await db.commit()
+    await redis.delete(key)
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +207,10 @@ async def list_live_tools(
         base_query = base_query.where(search_clause)
         count_query = count_query.where(search_clause)
 
+    if filters.is_featured is not None:
+        base_query = base_query.where(Tool.is_featured == filters.is_featured)
+        count_query = count_query.where(Tool.is_featured == filters.is_featured)
+
     # --- sorting ---
     order = {
         "popular": Tool.total_requests.desc(),
@@ -217,8 +247,12 @@ async def update_tool(db: AsyncSession, tool: Tool, data: ToolUpdate) -> Tool:
     for field, value in updates.items():
         setattr(tool, field, value)
     await db.commit()
-    await db.refresh(tool)
-    return tool
+    result = await db.execute(
+        select(Tool)
+        .where(Tool.id == tool.id)
+        .options(selectinload(Tool.seller))
+    )
+    return result.scalar_one()
 
 
 async def pause_tool(db: AsyncSession, tool: Tool) -> Tool:

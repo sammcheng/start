@@ -4,6 +4,7 @@ import secrets
 
 _PREFIX = "hm_live_"
 _RANDOM_BYTES = 30  # produces ~40 base64url chars, total key length ~48
+_DISPLAY_PREFIX_LENGTH = 12
 
 
 def generate_api_key() -> str:
@@ -24,5 +25,5 @@ def verify_api_key(raw_key: str, stored_hash: str) -> bool:
 
 
 def key_prefix(raw_key: str) -> str:
-    """Return the first 8 characters of *raw_key* (e.g. ``hm_live_``)."""
-    return raw_key[:8]
+    """Return a safe preview prefix for *raw_key* (e.g. ``hm_live_abc1``)."""
+    return raw_key[:_DISPLAY_PREFIX_LENGTH]

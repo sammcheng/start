@@ -27,6 +27,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(String, unique=True)
     display_name: Mapped[str] = mapped_column(String)
     avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    stripe_customer_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    stripe_connect_id: Mapped[str | None] = mapped_column(String, nullable=True)
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="userrole"),
         default=UserRole.both,

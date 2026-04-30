@@ -14,7 +14,7 @@ export default async function Home() {
 
   try {
     const data = await api.get<ToolListResponse>(
-      `/tools${buildQuery({ is_featured: "true", limit: 4, sort_by: "popular" })}`,
+      `/tools${buildQuery({ is_featured: true, limit: 4, sort_by: "popular" })}`,
       { next: { revalidate: 300 } }
     );
     featuredTools = data.items;

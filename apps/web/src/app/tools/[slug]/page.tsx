@@ -2,15 +2,26 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import ToolDocs from "@/components/docs/ToolDocs";
 import type { Tool } from "@/types/tool";
-import ToolDetailClient from "./ToolDetailClient";
-import DemoSection from "./DemoSection";
+import type { ToolDocumentation } from "@/types/docs";
+import DemoRunner from "@/components/demo/DemoRunner";
 
 // ── Data ───────────────────────────────────────────────────────────────────
 
 async function fetchTool(slug: string): Promise<Tool | null> {
   try {
     return await api.get<Tool>(`/tools/${slug}`, {
+      next: { revalidate: 120 },
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function fetchToolDocs(slug: string): Promise<ToolDocumentation | null> {
+  try {
+    return await api.get<ToolDocumentation>(`/tools/${slug}/docs`, {
       next: { revalidate: 120 },
     });
   } catch {
@@ -45,8 +56,8 @@ const CAT_COLORS: Record<string, string> = {
   other: "#6b7280",
 };
 
-function formatPrice(p: string): string {
-  const n = parseFloat(p);
+function formatPrice(p: string | null): string {
+  const n = parseFloat(p ?? "0");
   if (n === 0) return "Free";
   if (n < 0.001) return `$${n.toFixed(6)}`;
   if (n < 0.01) return `$${n.toFixed(4)}`;
@@ -66,7 +77,7 @@ function SchemaBlock({ schema }: { schema: Record<string, unknown> }) {
   return (
     <pre
       className="code-block rounded-xl p-4 text-xs overflow-x-auto leading-relaxed"
-      style={{ color: "#a8ff78" }}
+      style={{ color: "var(--green)" }}
     >
       {formatted}
     </pre>
@@ -113,6 +124,7 @@ export default async function ToolPage({
   const { slug } = await params;
   const tool = await fetchTool(slug);
   if (!tool) notFound();
+  const toolDocs = await fetchToolDocs(slug);
 
   const catColor = CAT_COLORS[tool.category] ?? "#6b7280";
 
@@ -262,17 +274,15 @@ export default async function ToolPage({
               </section>
             )}
 
-            {/* Code examples — client component for tab switching + copy */}
-            <ToolDetailClient tool={tool} />
+            {toolDocs && <ToolDocs docs={toolDocs} />}
 
-            {/* Documentation */}
             {tool.documentation && (
               <section className="animate-fade-up">
                 <h2
                   className="text-xs font-mono uppercase tracking-widest mb-4"
                   style={{ color: "var(--faint)" }}
                 >
-                  Documentation
+                  Seller Notes
                 </h2>
                 <div
                   className="text-sm leading-relaxed whitespace-pre-wrap"
@@ -305,7 +315,7 @@ export default async function ToolPage({
 
               {/* CTA buttons */}
               <div className="space-y-2.5">
-                {tool.demo_url && (
+                {(tool.input_type || tool.input_schema) && tool.output_type && (
                   <a
                     href="#demo"
                     className="flex items-center justify-center gap-2 w-full rounded-xl py-3 text-sm font-semibold transition-all hover:opacity-90 active:scale-[0.98]"
@@ -362,12 +372,12 @@ export default async function ToolPage({
                 <StatRow
                   icon="◈"
                   label="Input"
-                  value={tool.input_type}
+                  value={tool.input_type ?? "—"}
                 />
                 <StatRow
                   icon="◇"
                   label="Output"
-                  value={tool.output_type}
+                  value={tool.output_type ?? "—"}
                 />
               </div>
 
@@ -388,7 +398,14 @@ export default async function ToolPage({
 
       {/* ── Demo section ────────────────────────────────────────────────── */}
       <div id="demo">
-        <DemoSection tool={tool} />
+        <div className="max-w-7xl mx-auto px-6 pb-12">
+          <DemoRunner
+            toolSlug={tool.slug}
+            inputType={tool.input_type}
+            inputSchema={tool.input_schema}
+            outputType={tool.output_type}
+          />
+        </div>
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
+from app.exceptions import Forbidden, InvalidAPIKeyError, Unauthorized
 from app.models import APIKey, User
 from app.models.user import UserRole
 from app.utils.hashing import hash_api_key
@@ -86,10 +87,7 @@ async def _verify_clerk_jwt(token: str) -> dict:
     try:
         header = jwt.get_unverified_header(token)
     except JWTError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "INVALID_TOKEN", "message": "Malformed JWT."},
-        ) from exc
+        raise Unauthorized("Malformed JWT.") from exc
 
     kid = header.get("kid")
     keys = await _get_jwks()
@@ -102,29 +100,19 @@ async def _verify_clerk_jwt(token: str) -> dict:
         jwk = next((k for k in keys if k.get("kid") == kid), None)
 
     if jwk is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "INVALID_TOKEN", "message": "Token signing key not found."},
-        )
+        raise Unauthorized("Token signing key not found.")
 
     try:
         claims: dict = jwt.decode(token, jwk, algorithms=["RS256"])
     except JWTError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "INVALID_TOKEN", "message": "Token verification failed."},
-        ) from exc
+        raise Unauthorized("Token verification failed.") from exc
 
     return claims
 
 
 def _extract_bearer(authorization: str | None) -> str:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "MISSING_TOKEN", "message": "Authorization header required."},
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise Unauthorized("Authorization header required.")
     return authorization[len("Bearer "):]
 
 
@@ -151,13 +139,7 @@ async def get_current_user(
     )
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": "USER_NOT_FOUND",
-                "message": "No active account found. Please complete registration.",
-            },
-        )
+        raise Unauthorized("No active account found. Please complete registration.")
     return user
 
 
@@ -166,13 +148,7 @@ async def require_seller(
 ) -> User:
     """Return the current user only if they have seller capability."""
     if current_user.role not in (UserRole.seller, UserRole.both, UserRole.admin):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "SELLER_REQUIRED",
-                "message": "A seller account is required for this action.",
-            },
-        )
+        raise Forbidden("A seller account is required for this action.")
     return current_user
 
 
@@ -190,10 +166,7 @@ async def validate_api_key(
     ``(user, api_key)``. Raises 401 on any failure.
     """
     if not x_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "MISSING_API_KEY", "message": "X-Api-Key header required."},
-        )
+        raise InvalidAPIKeyError("X-Api-Key header required.")
 
     key_hash = hash_api_key(x_api_key)
     result = await db.execute(
@@ -202,20 +175,14 @@ async def validate_api_key(
     api_key = result.scalar_one_or_none()
 
     if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "INVALID_API_KEY", "message": "API key is invalid or inactive."},
-        )
+        raise InvalidAPIKeyError()
 
     user_result = await db.execute(
         select(User).where(User.id == api_key.user_id, User.is_active.is_(True))
     )
     user = user_result.scalar_one_or_none()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "USER_NOT_FOUND", "message": "API key owner not found."},
-        )
+        raise InvalidAPIKeyError("API key owner not found.")
 
     await db.execute(
         update(APIKey)

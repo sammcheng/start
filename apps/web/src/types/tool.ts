@@ -35,16 +35,24 @@ export interface Tool {
   category: ToolCategory;
   status: ToolStatus;
   ownership_type: OwnershipType;
-  input_type: InputType;
-  output_type: OutputType;
+  input_type: InputType | null;
+  output_type: OutputType | null;
   input_schema: Record<string, unknown> | null;
   output_schema: Record<string, unknown> | null;
+  environment_variables?: Array<{ key: string; value: string }> | null;
+  source_file_tree?: string[] | null;
   /** Decimal serialised as string from Python */
-  price_per_request: string;
+  price_per_request: string | null;
+  one_time_price?: string | null;
   demo_url: string | null;
   api_endpoint: string | null;
   docker_image_uri: string | null;
   github_url: string | null;
+  source_s3_key?: string | null;
+  config_s3_key?: string | null;
+  entry_command?: string | null;
+  port?: number;
+  processing_error?: string | null;
   documentation: string | null;
   avg_response_time_ms: number | null;
   total_requests: number;
@@ -71,4 +79,19 @@ export interface ToolFilters {
   max_price?: number;
   search?: string;
   sort_by?: SortBy;
+}
+
+export interface ToolUploadResponse {
+  tool_id: string;
+  status: ToolStatus;
+  status_url: string;
+  source_file_tree: string[] | null;
+}
+
+export interface ToolStatusResponse {
+  tool_id: string;
+  status: ToolStatus;
+  error_message: string | null;
+  api_endpoint: string | null;
+  source_file_tree: string[] | null;
 }

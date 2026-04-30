@@ -3,9 +3,12 @@ import logging
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import settings
+from app.exceptions import AppError
+from app.request_context import get_request_id
 
 logger = logging.getLogger(__name__)
 
@@ -14,19 +17,49 @@ def _error_response(
     status_code: int,
     code: str,
     message: str,
+    request_id: str,
     details: dict | None = None,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content={"error": {"code": code, "message": message, "details": details or {}}},
+        content={
+            "error": {
+                "code": code,
+                "message": message,
+                "status": status_code,
+                "request_id": request_id,
+                "details": details or {},
+            }
+        },
+        headers={"X-HackMarket-Request-Id": request_id},
     )
 
 
 def setup_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(AppError)
+    async def app_error_handler(
+        request: Request, exc: AppError
+    ) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", get_request_id())
+        logger.warning(
+            "Application error on %s %s: %s",
+            request.method,
+            request.url.path,
+            exc.message,
+        )
+        return _error_response(
+            exc.status_code,
+            exc.error_code,
+            exc.message,
+            request_id,
+            exc.details,
+        )
+
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(
         request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", get_request_id())
         # Pass through the detail from HTTPException as-is when it's a dict
         if isinstance(exc.detail, dict):
             code = exc.detail.get("code", "HTTP_ERROR")
@@ -37,24 +70,55 @@ def setup_error_handlers(app: FastAPI) -> None:
             message = str(exc.detail)
             details = {}
 
-        return _error_response(exc.status_code, code, message, details)
+        return _error_response(exc.status_code, str(code).lower(), message, request_id, details)
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", get_request_id())
         details = {"errors": exc.errors()}
         return _error_response(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "VALIDATION_ERROR",
+            "validation_error",
             "Request validation failed.",
+            request_id,
             details,
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def integrity_error_handler(
+        request: Request, exc: IntegrityError
+    ) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", get_request_id())
+        logger.warning("Database integrity error on %s %s", request.method, request.url.path)
+        return _error_response(
+            status.HTTP_409_CONFLICT,
+            "database_conflict",
+            "This change conflicts with existing data.",
+            request_id,
+            {"type": type(exc).__name__} if settings.debug else {},
+        )
+
+    @app.exception_handler(OperationalError)
+    async def operational_error_handler(
+        request: Request, exc: OperationalError
+    ) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", get_request_id())
+        logger.exception("Database operational error on %s %s", request.method, request.url.path)
+        return _error_response(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "database_unavailable",
+            "The database is temporarily unavailable.",
+            request_id,
+            {"type": type(exc).__name__} if settings.debug else {},
         )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", get_request_id())
         logger.exception(
             "Unhandled exception on %s %s", request.method, request.url.path
         )
@@ -62,8 +126,9 @@ def setup_error_handlers(app: FastAPI) -> None:
         details = {"type": type(exc).__name__} if settings.debug else {}
         return _error_response(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "INTERNAL_SERVER_ERROR",
+            "internal_server_error",
             "An unexpected error occurred." if not settings.debug else str(exc),
+            request_id,
             details,
         )
 

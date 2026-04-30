@@ -1,0 +1,158 @@
+from decimal import Decimal
+
+import httpx
+import pytest
+
+from app.dependencies import validate_api_key
+from app.exceptions import InvalidAPIKeyError
+from app.main import app
+from app.routers import gateway
+from app.services import tool_service, usage_service
+
+
+def test_valid_api_key_forwards_request(client, auth_overrides, buyer, api_key, live_tool, monkeypatch):
+    auth_overrides(api_key_context=(buyer, api_key))
+
+    async def fake_get_tool_by_slug(db, slug):
+        assert slug == live_tool.slug
+        return live_tool
+
+    async def fake_forward_request(tool, request, body, request_id):
+        return httpx.Response(200, json={"ok": True}, headers={"content-type": "application/json"})
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(tool_service, "get_tool_by_slug", fake_get_tool_by_slug)
+    monkeypatch.setattr(gateway, "_forward_request", fake_forward_request)
+    monkeypatch.setattr(tool_service, "increment_total_requests", noop)
+    monkeypatch.setattr(tool_service, "flush_total_requests_if_needed", noop)
+    monkeypatch.setattr(usage_service, "create_usage_log", noop)
+
+    response = client.post(f"/api/v1/tools/{live_tool.slug}", headers={"X-API-Key": "hm_live_test"}, json={"text": "hello"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert response.headers["X-HackMarket-Request-Id"]
+    assert response.headers["X-RateLimit-Limit"] == "100"
+
+
+def test_invalid_api_key_rejected(client, live_tool):
+    async def invalid_key():
+        raise InvalidAPIKeyError()
+
+    app.dependency_overrides[validate_api_key] = invalid_key
+
+    response = client.post(f"/api/v1/tools/{live_tool.slug}", headers={"X-API-Key": "bad-key"}, json={"text": "hello"})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_api_key"
+
+
+def test_inactive_api_key_rejected(client, live_tool):
+    async def inactive_key():
+        raise InvalidAPIKeyError("API key is invalid or inactive.")
+
+    app.dependency_overrides[validate_api_key] = inactive_key
+
+    response = client.post(f"/api/v1/tools/{live_tool.slug}", headers={"X-API-Key": "inactive"}, json={"text": "hello"})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["message"] == "API key is invalid or inactive."
+
+
+def test_rate_limit_enforced(client, auth_overrides, buyer, api_key, live_tool, fake_redis, monkeypatch):
+    auth_overrides(api_key_context=(buyer, api_key))
+    fake_redis.values[f"ratelimit:{api_key.id}"] = 100
+
+    async def fake_get_tool_by_slug(db, slug):
+        return live_tool
+
+    monkeypatch.setattr(tool_service, "get_tool_by_slug", fake_get_tool_by_slug)
+
+    response = client.post(f"/api/v1/tools/{live_tool.slug}", headers={"X-API-Key": "hm_live_test"}, json={"text": "hello"})
+
+    assert response.status_code == 429
+    assert response.json()["error"]["code"] == "rate_limit_exceeded"
+
+
+def test_usage_logged(client, auth_overrides, buyer, api_key, live_tool, monkeypatch):
+    auth_overrides(api_key_context=(buyer, api_key))
+    captured = []
+
+    async def fake_get_tool_by_slug(db, slug):
+        return live_tool
+
+    async def fake_forward_request(tool, request, body, request_id):
+        return httpx.Response(200, json={"result": "ok"}, headers={"content-type": "application/json"})
+
+    async def fake_create_usage_log(entry):
+        captured.append(entry)
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(tool_service, "get_tool_by_slug", fake_get_tool_by_slug)
+    monkeypatch.setattr(gateway, "_forward_request", fake_forward_request)
+    monkeypatch.setattr(usage_service, "create_usage_log", fake_create_usage_log)
+    monkeypatch.setattr(tool_service, "increment_total_requests", noop)
+    monkeypatch.setattr(tool_service, "flush_total_requests_if_needed", noop)
+
+    response = client.post(f"/api/v1/tools/{live_tool.slug}", headers={"X-API-Key": "hm_live_test"}, json={"text": "hello"})
+
+    assert response.status_code == 200
+    assert len(captured) == 1
+    assert captured[0].tool_id == live_tool.id
+    assert captured[0].cost == Decimal("0.25")
+
+
+def test_tool_not_found(client, auth_overrides, buyer, api_key, monkeypatch):
+    auth_overrides(api_key_context=(buyer, api_key))
+
+    async def fake_get_tool_by_slug(db, slug):
+        return None
+
+    monkeypatch.setattr(tool_service, "get_tool_by_slug", fake_get_tool_by_slug)
+
+    response = client.post("/api/v1/tools/missing-tool", headers={"X-API-Key": "hm_live_test"}, json={"text": "hello"})
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "tool_not_found"
+
+
+def test_tool_not_live(client, auth_overrides, buyer, api_key, draft_tool, monkeypatch):
+    auth_overrides(api_key_context=(buyer, api_key))
+
+    async def fake_get_tool_by_slug(db, slug):
+        return draft_tool
+
+    monkeypatch.setattr(tool_service, "get_tool_by_slug", fake_get_tool_by_slug)
+
+    response = client.post(f"/api/v1/tools/{draft_tool.slug}", headers={"X-API-Key": "hm_live_test"}, json={"text": "hello"})
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "tool_not_live"
+
+
+def test_response_time_recorded(client, auth_overrides, buyer, api_key, live_tool, monkeypatch):
+    auth_overrides(api_key_context=(buyer, api_key))
+
+    async def fake_get_tool_by_slug(db, slug):
+        return live_tool
+
+    async def fake_forward_request(tool, request, body, request_id):
+        return httpx.Response(200, json={"result": "ok"}, headers={"content-type": "application/json"})
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(tool_service, "get_tool_by_slug", fake_get_tool_by_slug)
+    monkeypatch.setattr(gateway, "_forward_request", fake_forward_request)
+    monkeypatch.setattr(tool_service, "increment_total_requests", noop)
+    monkeypatch.setattr(tool_service, "flush_total_requests_if_needed", noop)
+    monkeypatch.setattr(usage_service, "create_usage_log", noop)
+
+    response = client.post(f"/api/v1/tools/{live_tool.slug}", headers={"X-API-Key": "hm_live_test"}, json={"text": "hello"})
+
+    assert response.status_code == 200
+    assert int(response.headers["X-HackMarket-Response-Time-Ms"]) >= 1

@@ -1,0 +1,56 @@
+services:
+  - type: web
+    name: hackmarket-api
+    runtime: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./apps/api/Dockerfile.prod
+    dockerContext: ./apps/api
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hackmarket-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: hackmarket-redis
+          type: keyvalue
+          property: connectionString
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_WEBHOOK_SECRET
+        sync: false
+      - key: CLERK_JWKS_URL
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+
+  - type: keyvalue
+    name: hackmarket-redis
+    plan: starter
+    region: oregon
+    maxmemoryPolicy: noeviction
+
+databases:
+  - name: hackmarket-db
+    plan: starter
+    region: oregon
+    postgresMajorVersion: "16"

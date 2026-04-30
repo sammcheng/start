@@ -1,1 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
+
+/* ── Design tokens ──────────────────────────────────────────────────────── */
+:root {
+  --bg:       #0a0a0a;
+  --card:     #141414;
+  --elevated: #1c1c1c;
+  --border:   #262626;
+  --border-h: #363636;
+  --blue:     #3b82f6;
+  --blue-dim: rgba(59,130,246,0.12);
+  --blue-glow:rgba(59,130,246,0.06);
+  --text:     #fafafa;
+  --muted:    #a1a1aa;
+  --faint:    #52525b;
+  --green:    #22c55e;
+  --yellow:   #eab308;
+  --red:      #ef4444;
+
+  --font-display: 'Syne', sans-serif;
+  --font-body:    'DM Sans', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--bg);
+  /* Subtle dot-grid texture */
+  background-image: radial-gradient(circle, #ffffff08 1px, transparent 1px);
+  background-size: 28px 28px;
+  min-height: 100vh;
+}
+
+/* ── Typography helpers ─────────────────────────────────────────────────── */
+.font-display { font-family: var(--font-display); }
+.font-mono    { font-family: var(--font-mono); }
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-h); }
+
+/* ── Code blocks ────────────────────────────────────────────────────────── */
+.code-block {
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-x: auto;
+}
+
+.code-block .token-string  { color: #a8ff78; }
+.code-block .token-key     { color: #79c0ff; }
+.code-block .token-number  { color: #ffa657; }
+.code-block .token-keyword { color: #ff7b72; }
+.code-block .token-comment { color: var(--faint); font-style: italic; }
+.code-block .token-url     { color: var(--blue); }
+.code-block .token-flag    { color: var(--yellow); }
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-shimmer {
+  background: linear-gradient(90deg, var(--card) 25%, var(--elevated) 50%, var(--card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* Stagger delays */
+.delay-50  { animation-delay: 50ms; }
+.delay-100 { animation-delay: 100ms; }
+.delay-150 { animation-delay: 150ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-250 { animation-delay: 250ms; }
+.delay-300 { animation-delay: 300ms; }
+
+/* ── Category colour map ────────────────────────────────────────────────── */
+[data-cat="nlp"]             { --cat: #3b82f6; }
+[data-cat="computer_vision"] { --cat: #8b5cf6; }
+[data-cat="data_analysis"]   { --cat: #f59e0b; }
+[data-cat="automation"]      { --cat: #10b981; }
+[data-cat="generation"]      { --cat: #ec4899; }
+[data-cat="other"]           { --cat: #6b7280; }

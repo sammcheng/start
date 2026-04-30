@@ -56,14 +56,14 @@ setup_error_handlers(app)
 # ---------------------------------------------------------------------------
 # Routers
 # ---------------------------------------------------------------------------
-from app.routers import auth  # noqa: E402
+from app.routers import auth, tools  # noqa: E402
 
 app.include_router(auth.router, prefix="/v1")
+app.include_router(tools.router, prefix="/v1")
 
 # Future routers — uncomment as they are created:
-# from app.routers import tools, users, api_keys
+# from app.routers import users, api_keys
 # app.include_router(users.router, prefix="/v1/users", tags=["users"])
-# app.include_router(tools.router, prefix="/v1/tools", tags=["tools"])
 # app.include_router(api_keys.router, prefix="/v1/api-keys", tags=["api-keys"])
 
 

@@ -1,4 +1,41 @@
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# ---------------------------------------------------------------------------
+# Grouped sub-settings (plain BaseModel, not BaseSettings — loaded from the
+# flat env vars by the main Settings class and exposed via properties)
+# ---------------------------------------------------------------------------
+
+
+class DatabaseSettings(BaseModel):
+    url: str
+
+
+class RedisSettings(BaseModel):
+    url: str
+
+
+class StripeSettings(BaseModel):
+    secret_key: str
+    webhook_secret: str
+
+
+class AWSSettings(BaseModel):
+    access_key_id: str
+    secret_access_key: str
+    region: str
+    s3_bucket_name: str
+
+
+class ClerkSettings(BaseModel):
+    secret_key: str
+    jwks_url: str
+
+
+# ---------------------------------------------------------------------------
+# Main settings — loads all env vars; exposes grouped views via properties
+# ---------------------------------------------------------------------------
 
 
 class Settings(BaseSettings):
@@ -6,6 +43,7 @@ class Settings(BaseSettings):
 
     # App
     debug: bool = False
+    environment: str = "development"
     cors_origins: list[str] = ["http://localhost:3000"]
 
     # Database
@@ -20,6 +58,7 @@ class Settings(BaseSettings):
 
     # Clerk
     clerk_secret_key: str = ""
+    clerk_jwks_url: str = ""  # e.g. https://<your-clerk-domain>/.well-known/jwks.json
 
     # AWS
     aws_access_key_id: str = ""
@@ -29,6 +68,41 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
+
+    # ---------------------------------------------------------------------------
+    # Grouped access
+    # ---------------------------------------------------------------------------
+
+    @property
+    def database(self) -> DatabaseSettings:
+        return DatabaseSettings(url=self.database_url)
+
+    @property
+    def redis(self) -> RedisSettings:
+        return RedisSettings(url=self.redis_url)
+
+    @property
+    def stripe(self) -> StripeSettings:
+        return StripeSettings(
+            secret_key=self.stripe_secret_key,
+            webhook_secret=self.stripe_webhook_secret,
+        )
+
+    @property
+    def aws(self) -> AWSSettings:
+        return AWSSettings(
+            access_key_id=self.aws_access_key_id,
+            secret_access_key=self.aws_secret_access_key,
+            region=self.aws_region,
+            s3_bucket_name=self.s3_bucket_name,
+        )
+
+    @property
+    def clerk(self) -> ClerkSettings:
+        return ClerkSettings(
+            secret_key=self.clerk_secret_key,
+            jwks_url=self.clerk_jwks_url,
+        )
 
 
 settings = Settings()

@@ -82,8 +82,16 @@ class ToolConfigureRequest(BaseModel):
     input_schema: dict = Field(default_factory=dict)
     output_schema: dict = Field(default_factory=dict)
     environment_variables: list[EnvironmentVariable] = Field(default_factory=list)
-    entry_command: str = Field(min_length=1, max_length=500)
+    entry_command: str | None = Field(default=None, min_length=1, max_length=500)
     port: int = Field(default=8080, ge=1, le=65535)
+    deployment_url: HttpUrl | None = None
+
+    @field_validator("deployment_url")
+    @classmethod
+    def validate_deployment_url(cls, value: HttpUrl | None) -> HttpUrl | None:
+        if value and value.scheme not in {"http", "https"}:
+            raise ValueError("deployment_url must use http or https.")
+        return value
 
 
 class ToolUploadResponse(BaseModel):

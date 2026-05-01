@@ -2,7 +2,7 @@ import io
 import zipfile
 
 from app.models.tool import ToolStatus
-from app.services import container_service, storage_service, tool_service
+from app.services import container_service, endpoint_service, storage_service, tool_service
 
 
 def _zip_bytes() -> bytes:
@@ -88,3 +88,42 @@ def test_configure_starts_processing_when_source_exists(client, auth_overrides, 
     assert response.json()["status"] == ToolStatus.processing.value
     assert draft_tool.status == ToolStatus.processing
     assert process_calls == [str(draft_tool.id)]
+
+
+def test_configure_with_deployed_api_goes_live(client, auth_overrides, seller, draft_tool, monkeypatch):
+    auth_overrides(seller_user=seller)
+    draft_tool.status = ToolStatus.draft
+
+    async def fake_get_tool_by_id(db, tool_id):
+        return draft_tool
+
+    async def fake_update_tool(db, tool, updates):
+        return _apply_tool_updates(tool, updates)
+
+    async def fake_upload_json(key, payload):
+        return None
+
+    async def fake_verify_live_endpoint(url):
+        return "https://api.example.com"
+
+    monkeypatch.setattr(tool_service, "get_tool_by_id", fake_get_tool_by_id)
+    monkeypatch.setattr(tool_service, "update_tool", fake_update_tool)
+    monkeypatch.setattr(storage_service, "upload_json", fake_upload_json)
+    monkeypatch.setattr(endpoint_service, "verify_live_endpoint", fake_verify_live_endpoint)
+
+    response = client.post(
+        f"/v1/tools/{draft_tool.id}/configure",
+        json={
+            "input_schema": {"fields": [{"name": "text", "type": "string", "required": True}]},
+            "output_schema": {"type": "json", "properties": {"result": {"type": "string"}}},
+            "environment_variables": [],
+            "entry_command": None,
+            "port": 8080,
+            "deployment_url": "https://api.example.com",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == ToolStatus.live.value
+    assert draft_tool.status == ToolStatus.live
+    assert draft_tool.api_endpoint == "https://api.example.com"

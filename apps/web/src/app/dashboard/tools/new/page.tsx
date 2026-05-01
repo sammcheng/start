@@ -39,6 +39,7 @@ type FormState = {
   input_type: InputType;
   output_type: OutputType;
   output_description: string;
+  deployment_url: string;
   entry_command: string;
   port: number;
   price_per_request: string;
@@ -80,6 +81,7 @@ const initialState: FormState = {
   input_type: "text",
   output_type: "json",
   output_description: "",
+  deployment_url: "",
   entry_command: "",
   port: 8080,
   price_per_request: "",
@@ -213,8 +215,9 @@ export default function NewToolPage() {
         environment_variables: form.environment_variables
           .filter((env) => env.key.trim() && env.value.trim())
           .map((env) => ({ key: env.key.trim(), value: env.value })),
-        entry_command: form.entry_command,
+        entry_command: form.entry_command || null,
         port: form.port,
+        deployment_url: form.deployment_url.trim() || null,
       },
       { token }
     );
@@ -334,7 +337,11 @@ export default function NewToolPage() {
 
       setToolId(response.tool_id);
       setSourceTree(response.source_file_tree ?? []);
-      setStatusMessage("Source received. We started the MVP processing pipeline in the background.");
+      setStatusMessage(
+        response.status === "processing"
+          ? "Source received. We started the MVP processing pipeline in the background."
+          : "Source received. Add runtime configuration when you're ready to start processing."
+      );
       setStep(3);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -473,6 +480,12 @@ export default function NewToolPage() {
           {step === 2 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               <SectionHeader eyebrow="Step 2" title="Upload code" description="Pick a source path for the MVP processor. GitHub stores the repo URL, zip uploads go straight to S3." />
+              <div style={{ background: "rgba(59,130,246,.08)", border: "1px solid rgba(59,130,246,.2)", borderRadius: "var(--radius-md)", padding: 16 }}>
+                <div style={{ fontSize: 13.5, color: "var(--text)", fontWeight: 600, marginBottom: 6 }}>Already hosting the API somewhere else?</div>
+                <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
+                  You can skip code upload and connect a live deployed endpoint in Step 3. Hackmarket will route buyers to that API immediately after health-checking it.
+                </div>
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <ChoiceCard active={form.upload_mode === "github"} title="Connect GitHub" body="Paste the repository URL and we'll clone it during processing." onClick={() => updateField("upload_mode", "github")} />
                 <ChoiceCard active={form.upload_mode === "zip"} title="Upload Zip" body="Drop a source archive and we'll save it under your tool source path in S3." onClick={() => updateField("upload_mode", "zip")} />
@@ -510,7 +523,15 @@ export default function NewToolPage() {
 
           {step === 3 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              <SectionHeader eyebrow="Step 3" title="Runtime configuration" description="Define inputs, outputs, env vars, and the launch contract for this tool." />
+              <SectionHeader eyebrow="Step 3" title="Runtime configuration" description="Define inputs, outputs, env vars, and either the launch command or a live deployed endpoint." />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <WizLabel label="Live deployment URL (optional)">
+                  <WizInput value={form.deployment_url} onChange={(e) => updateField("deployment_url", e.target.value)} placeholder="https://api.yourtool.com" />
+                </WizLabel>
+                <div style={{ display: "flex", alignItems: "end", fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
+                  If this is filled in, Hackmarket will health-check the URL and use it as the live API instead of building a container for the uploaded source.
+                </div>
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <WizLabel label="Input type">
                   <WizSelect value={form.input_type} onChange={(e) => updateField("input_type", e.target.value as InputType)}>
@@ -562,7 +583,7 @@ export default function NewToolPage() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <WizLabel label="Entry command">
-                  <WizInput value={form.entry_command} onChange={(e) => updateField("entry_command", e.target.value)} placeholder="python app.py or node index.js" />
+                  <WizInput value={form.entry_command} onChange={(e) => updateField("entry_command", e.target.value)} placeholder={form.deployment_url ? "Optional when using a deployed API URL" : "python app.py or node index.js"} />
                 </WizLabel>
                 <WizLabel label="Port">
                   <WizInput type="number" value={String(form.port)} onChange={(e) => updateField("port", Number(e.target.value || 8080))} placeholder="8080" />
@@ -638,7 +659,9 @@ export default function NewToolPage() {
                 <SummaryCard label="Ownership" value={form.ownership_type === "royalty" ? "Royalties" : "Full sale"} />
                 <SummaryCard label="Input contract" value={`${humanize(form.input_type)} with ${form.input_fields.length} fields`} />
                 <SummaryCard label="Output contract" value={`${humanize(form.output_type)} output`} />
+                <SummaryCard label="Deployment mode" value={form.deployment_url ? "Bring your own deployed API" : "Hackmarket-managed container build"} />
                 <SummaryCard label="Entry command" value={form.entry_command || "Not configured"} />
+                <SummaryCard label="Deployment URL" value={form.deployment_url || "Not provided"} />
                 <SummaryCard label="Port" value={String(form.port)} />
                 <SummaryCard label="Pricing" value={form.ownership_type === "royalty" ? `$${form.price_per_request || "0"} per request` : `$${form.one_time_price || "0"} one-time asking price`} />
                 <SummaryCard label="Uploaded items" value={sourceTree.length ? `${sourceTree.length} files indexed` : "No file tree preview yet"} />
@@ -683,8 +706,9 @@ export default function NewToolPage() {
           <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 20 }}>
             <div style={{ fontSize: 10.5, fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".1em", color: "var(--faint)", marginBottom: 14 }}>Seller checklist</div>
             <ul style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13.5, lineHeight: 1.6, color: "var(--muted)", listStyle: "none", padding: 0, margin: 0 }}>
-              <li>Make sure the entry command boots a service on the declared port.</li>
-              <li>Zip uploads immediately move into background processing for this MVP.</li>
+              <li>Use a deployed API URL if you already host the tool yourself and want the fastest path to production.</li>
+              <li>Otherwise, make sure the entry command boots a service on the declared port.</li>
+              <li>Zip uploads now wait for runtime configuration before starting background processing.</li>
               <li>GitHub uploads store the repo URL now and clone it during processing.</li>
               <li>Each major step writes back to the draft so you can leave and return later.</li>
             </ul>

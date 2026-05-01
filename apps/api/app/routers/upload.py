@@ -19,7 +19,7 @@ from app.schemas.tool import (
     ToolUploadResponse,
     ToolUpdate,
 )
-from app.services import container_service, storage_service, tool_service
+from app.services import container_service, endpoint_service, storage_service, tool_service
 
 router = APIRouter(prefix="/tools", tags=["tool-upload"])
 
@@ -131,9 +131,20 @@ async def configure_tool(
     tool: Tool = Depends(_get_owned_tool),
     db: AsyncSession = Depends(get_db),
 ) -> ToolResponse:
+    if not body.deployment_url and not body.entry_command:
+        raise AppError(
+            message="Provide either an entry command for Hackmarket to run or a live deployment URL.",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error_code="runtime_configuration_incomplete",
+        )
+
     config_payload = body.model_dump()
     config_s3_key = f"tools/{tool_id}/config.json"
     await storage_service.upload_json(config_s3_key, config_payload)
+
+    normalized_deployment_url = None
+    if body.deployment_url:
+        normalized_deployment_url = await endpoint_service.verify_live_endpoint(str(body.deployment_url))
 
     updated = await tool_service.update_tool(
         db,
@@ -145,8 +156,14 @@ async def configure_tool(
             entry_command=body.entry_command,
             port=body.port,
             config_s3_key=config_s3_key,
+            api_endpoint=normalized_deployment_url,
+            status=ToolStatus.live if normalized_deployment_url else tool.status,
+            processing_error=None,
         ),
     )
+    if normalized_deployment_url:
+        return ToolResponse.model_validate(updated)
+
     if updated.status in {ToolStatus.draft, ToolStatus.rejected} and (updated.source_s3_key or updated.github_url):
         updated = await tool_service.update_tool(
             db,

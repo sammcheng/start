@@ -13,12 +13,8 @@ const gettingStartedExamples = [
   -H "X-API-Key: your_api_key_here" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "images": [
-      {
-        "filename": "kitchen.jpg",
-        "base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ..."
-      }
-    ]
+    "url": "https://www.zillow.com/homedetails/example-listing",
+    "maxImages": 8
   }'`,
   },
   {
@@ -30,12 +26,8 @@ response = requests.post(
     "${sampleEndpoint}",
     headers={"X-API-Key": "your_api_key_here"},
     json={
-        "images": [
-            {
-                "filename": "kitchen.jpg",
-                "base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
-            }
-        ]
+        "url": "https://www.zillow.com/homedetails/example-listing",
+        "maxImages": 8,
     },
     timeout=30,
 )
@@ -52,12 +44,8 @@ print(response.json())`,
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    images: [
-      {
-        filename: "kitchen.jpg",
-        base64: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
-      },
-    ],
+    url: "https://www.zillow.com/homedetails/example-listing",
+    maxImages: 8,
   }),
 });
 
@@ -72,12 +60,8 @@ async function main() {
   const response = await axios.post(
     "${sampleEndpoint}",
     {
-      images: [
-        {
-          filename: "kitchen.jpg",
-          base64: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
-        },
-      ],
+      url: "https://www.zillow.com/homedetails/example-listing",
+      maxImages: 8,
     },
     { headers: { "X-API-Key": "your_api_key_here" } }
   );
@@ -130,6 +114,10 @@ export default function DocsPage() {
               <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
                 <p style={{ fontSize: 10.5, fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".1em", color: "var(--faint)", marginBottom: 4 }}>First request</p>
                 <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>A real request shape to copy from</p>
+                <p style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 6 }}>
+                  The featured accessibility tool accepts either a property listing URL or a direct
+                  image payload if you already have photos.
+                </p>
               </div>
               <div style={{ padding: 20 }}>
                 <CodeBlock examples={gettingStartedExamples} />

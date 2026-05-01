@@ -43,10 +43,11 @@ async def ensure_bootstrap_marketplace_data() -> None:
                 seller_id=seller.id,
                 name="Home Accessibility Checker",
                 slug=CURATED_TOOL_SLUG,
-                tagline="Analyze home photos for accessibility barriers and renovation recommendations.",
+                tagline="Analyze Zillow links or home photos for accessibility barriers and renovation recommendations.",
                 description=(
-                    "Upload home images to detect accessibility barriers, estimate an overall "
-                    "accessibility score, and receive practical recommendations for safer navigation."
+                    "Submit a Zillow-style listing URL or upload home images to detect accessibility "
+                    "barriers, estimate an overall accessibility score, and receive practical "
+                    "recommendations for safer navigation."
                 ),
                 category=ToolCategory.computer_vision,
                 status=ToolStatus.live,
@@ -55,15 +56,13 @@ async def ensure_bootstrap_marketplace_data() -> None:
                 output_type=OutputType.json,
                 input_schema={
                     "example_input": {
-                        "images": [
-                            {
-                                "filename": "kitchen.jpg",
-                                "base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
-                            }
-                        ]
+                        "url": "https://www.zillow.com/homedetails/example-listing",
+                        "maxImages": 8
                     },
                     "fields": [
-                        {"name": "images", "type": "file", "required": True}
+                        {"name": "url", "type": "url", "required": False},
+                        {"name": "images", "type": "file", "required": False},
+                        {"name": "maxImages", "type": "number", "required": False}
                     ]
                 },
                 output_schema={
@@ -73,12 +72,18 @@ async def ensure_bootstrap_marketplace_data() -> None:
                             "overall_score": 78,
                             "summary": "Two accessibility barriers found near the entry path.",
                         },
+                        "source": {
+                            "type": "url",
+                            "url": "https://www.zillow.com/homedetails/example-listing",
+                            "scraped_images": 8,
+                        },
                         "timestamp": "2026-05-01T00:00:00Z",
                     },
                     "type": "json",
                     "properties": {
                         "success": {"type": "boolean"},
                         "analysis": {"type": "object"},
+                        "source": {"type": "object"},
                         "timestamp": {"type": "string"},
                     },
                 },
@@ -88,8 +93,9 @@ async def ensure_bootstrap_marketplace_data() -> None:
                 port=3000,
                 github_url="https://github.com/sammcheng/start",
                 documentation=(
-                    "Submit JSON with an `images` array containing processed image payloads. "
-                    "The service returns accessibility findings, an overall score, and recommendations."
+                    "Submit either a property listing `url` or an `images` array of processed image "
+                    "payloads. The service returns accessibility findings, an overall score, and "
+                    "recommendations."
                 ),
                 avg_response_time_ms=420,
                 uptime_percentage=Decimal("99.90"),
@@ -105,15 +111,13 @@ async def ensure_bootstrap_marketplace_data() -> None:
             tool.output_type = OutputType.json
             tool.input_schema = {
                 "example_input": {
-                    "images": [
-                        {
-                            "filename": "kitchen.jpg",
-                            "base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
-                        }
-                    ]
+                    "url": "https://www.zillow.com/homedetails/example-listing",
+                    "maxImages": 8
                 },
                 "fields": [
-                    {"name": "images", "type": "file", "required": True}
+                    {"name": "url", "type": "url", "required": False},
+                    {"name": "images", "type": "file", "required": False},
+                    {"name": "maxImages", "type": "number", "required": False}
                 ]
             }
             tool.output_schema = {
@@ -123,17 +127,34 @@ async def ensure_bootstrap_marketplace_data() -> None:
                         "overall_score": 78,
                         "summary": "Two accessibility barriers found near the entry path.",
                     },
+                    "source": {
+                        "type": "url",
+                        "url": "https://www.zillow.com/homedetails/example-listing",
+                        "scraped_images": 8,
+                    },
                     "timestamp": "2026-05-01T00:00:00Z",
                 },
                 "type": "json",
                 "properties": {
                     "success": {"type": "boolean"},
                     "analysis": {"type": "object"},
+                    "source": {"type": "object"},
                     "timestamp": {"type": "string"},
                 },
             }
             tool.price_per_request = Decimal("0.050000")
             tool.entry_command = "node server.js"
             tool.port = 3000
+            tool.tagline = "Analyze Zillow links or home photos for accessibility barriers and renovation recommendations."
+            tool.description = (
+                "Submit a Zillow-style listing URL or upload home images to detect accessibility "
+                "barriers, estimate an overall accessibility score, and receive practical "
+                "recommendations for safer navigation."
+            )
+            tool.documentation = (
+                "Submit either a property listing `url` or an `images` array of processed image "
+                "payloads. The service returns accessibility findings, an overall score, and "
+                "recommendations."
+            )
 
         await session.commit()

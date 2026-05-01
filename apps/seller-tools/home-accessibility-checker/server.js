@@ -200,7 +200,6 @@ app.post('/api/analyze', async (req, res) => {
   try {
     logger.info('Analysis request received', { ip: req.ip });
 
-    // Validate request body
     const validationResult = validationService.validateAnalyzeRequest(req.body);
     if (validationResult.error) {
       return res.status(400).json({
@@ -209,17 +208,7 @@ app.post('/api/analyze', async (req, res) => {
       });
     }
 
-    const { images } = req.body;
-
-    if (!images || images.length === 0) {
-      return res.status(400).json({
-        error: 'No images provided',
-        message: 'Please provide images for analysis'
-      });
-    }
-
-    // Use comprehensive analysis service (Rekognition + Claude)
-    const finalResult = await comprehensiveAnalysisService.analyzeImages(images);
+    const finalResult = await analyzeAccessibilityRequest(validationResult.value);
 
     logger.info('Analysis completed', { 
       score: finalResult.analysis.overall_score, 
@@ -229,6 +218,13 @@ app.post('/api/analyze', async (req, res) => {
     res.json(finalResult);
 
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.publicError || 'Analysis failed',
+        message: error.message
+      });
+    }
+
     logger.error('Analysis error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Analysis failed',
@@ -250,16 +246,7 @@ app.post('/', async (req, res) => {
       });
     }
 
-    const { images } = req.body;
-
-    if (!images || images.length === 0) {
-      return res.status(400).json({
-        error: 'No images provided',
-        message: 'Please provide images for analysis'
-      });
-    }
-
-    const finalResult = await comprehensiveAnalysisService.analyzeImages(images);
+    const finalResult = await analyzeAccessibilityRequest(validationResult.value);
 
     logger.info('Root analysis completed', {
       score: finalResult.analysis.overall_score,
@@ -268,6 +255,13 @@ app.post('/', async (req, res) => {
 
     res.json(finalResult);
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.publicError || 'Analysis failed',
+        message: error.message
+      });
+    }
+
     logger.error('Root analysis error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Analysis failed',
@@ -347,43 +341,32 @@ app.post('/api/scrape', async (req, res) => {
       ip: req.ip 
     });
 
-    const { url, maxImages = 20 } = req.body;
-
-    if (!url) {
+    const validationResult = validationService.validateScrapeRequest(req.body);
+    if (validationResult.error) {
       return res.status(400).json({
-        error: 'No URL provided',
-        message: 'Please provide a URL to scrape'
+        error: 'Invalid request',
+        details: validationResult.error.details
       });
     }
 
-    // Validate URL format
-    try {
-      new URL(url);
-    } catch (error) {
-      return res.status(400).json({
-        error: 'Invalid URL',
-        message: 'Please provide a valid URL'
+    const { url, maxImages = 10 } = validationResult.value;
+    const result = await scrapeImagesWithPython(url, maxImages);
+
+    if (result.images.length === 0) {
+      return res.status(404).json({
+        error: 'No images found',
+        message: 'No images could be scraped from the provided URL'
       });
     }
 
-             // Call Python scraper
-             const result = await scrapeImagesWithPython(url, maxImages);
-
-             if (result.images.length === 0) {
-               return res.status(404).json({
-                 error: 'No images found',
-                 message: 'No images could be scraped from the provided URL'
-               });
-             }
-
-             res.json({
-               success: true,
-               message: `Successfully scraped ${result.images.length} images`,
-               images: result.images,
-               propertyDetails: result.propertyDetails || {},
-               count: result.images.length,
-               url: url
-             });
+    res.json({
+      success: true,
+      message: `Successfully scraped ${result.images.length} images`,
+      images: result.images,
+      propertyDetails: result.propertyDetails || {},
+      count: result.images.length,
+      url
+    });
 
   } catch (error) {
     logger.error('Scraping error', { error: error.message, stack: error.stack });
@@ -393,6 +376,62 @@ app.post('/api/scrape', async (req, res) => {
     });
   }
 });
+
+async function analyzeAccessibilityRequest(payload) {
+  const images = await resolveImagesForAnalysis(payload);
+  const finalResult = await comprehensiveAnalysisService.analyzeImages(images);
+
+  if (payload.url) {
+    finalResult.source = {
+      type: 'url',
+      url: payload.url,
+      scraped_images: images.length
+    };
+  } else {
+    finalResult.source = {
+      type: 'images',
+      uploaded_images: images.length
+    };
+  }
+
+  return finalResult;
+}
+
+async function resolveImagesForAnalysis(payload) {
+  if (Array.isArray(payload.images) && payload.images.length > 0) {
+    return payload.images;
+  }
+
+  const scrapeResult = await scrapeImagesWithPython(payload.url, payload.maxImages || 10);
+  if (!scrapeResult.images.length) {
+    const error = new Error('No images could be scraped from the provided URL');
+    error.statusCode = 404;
+    error.publicError = 'No images found';
+    throw error;
+  }
+
+  const processedImages = [];
+  for (const [index, image] of scrapeResult.images.entries()) {
+    try {
+      processedImages.push(await imageService.fetchImageAsPayload(image.url, index));
+    } catch (error) {
+      logger.warn('Skipping scraped image that failed to download', {
+        imageUrl: image.url,
+        index,
+        error: error.message
+      });
+    }
+  }
+
+  if (!processedImages.length) {
+    const error = new Error('Scraped listing images could not be downloaded for analysis');
+    error.statusCode = 502;
+    error.publicError = 'Scraped images unavailable';
+    throw error;
+  }
+
+  return processedImages;
+}
 
 // Helper function to call Python scraper
 async function scrapeImagesWithPython(url, maxImages) {
@@ -429,7 +468,7 @@ async function scrapeImagesWithPython(url, maxImages) {
                  try {
                    // Parse the output to extract image URLs and property details
                    const { imageUrls, propertyDetails } = parseScraperOutput(stdout);
-                   const processedImages = imageUrls.map((url, index) => ({
+                   const processedImages = imageUrls.slice(0, maxImages).map((url, index) => ({
                      filename: `scraped_image_${index + 1}.jpg`,
                      url: url,
                      index: index
@@ -472,7 +511,7 @@ async function scrapeImagesWithPython(url, maxImages) {
                    if (mockCode === 0) {
                      try {
                        const { imageUrls, propertyDetails } = parseScraperOutput(mockStdout);
-                       const processedImages = imageUrls.map((url, index) => ({
+                       const processedImages = imageUrls.slice(0, maxImages).map((url, index) => ({
                          filename: `scraped_image_${index + 1}.jpg`,
                          url: url,
                          index: index

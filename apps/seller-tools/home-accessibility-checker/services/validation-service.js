@@ -31,9 +31,16 @@ class ValidationService {
       mimetype: Joi.string().valid('image/jpeg', 'image/jpg', 'image/png', 'image/webp').optional()
     });
 
+    this.scrapeUrlSchema = Joi.string()
+      .uri({ scheme: ['http', 'https'] })
+      .pattern(/zillow\.com|redfin\.com|realtor\.com|mls/i)
+      .message('url must be a valid property listing URL');
+
     // Analysis request schema
     this.analyzeRequestSchema = Joi.object({
-      images: Joi.array().items(this.imageSchema).min(1).required(),
+      images: Joi.array().items(this.imageSchema).min(1).optional(),
+      url: this.scrapeUrlSchema.optional(),
+      maxImages: Joi.number().integer().min(1).max(25).default(10).optional(),
       options: Joi.object({
         detailed_analysis: Joi.boolean().default(true),
         include_recommendations: Joi.boolean().default(true),
@@ -41,6 +48,11 @@ class ValidationService {
           Joi.string().valid('entrance', 'bathroom', 'kitchen', 'bedroom', 'hallway', 'stairs')
         ).optional()
       }).optional()
+    }).or('images', 'url');
+
+    this.scrapeRequestSchema = Joi.object({
+      url: this.scrapeUrlSchema.required(),
+      maxImages: Joi.number().integer().min(1).max(25).default(10).optional()
     });
 
     // Upload request schema
@@ -115,6 +127,32 @@ class ValidationService {
           details: [{ message: 'Validation service error' }] 
         }, 
         value: null 
+      };
+    }
+  }
+
+  validateScrapeRequest(data) {
+    try {
+      const { error, value } = this.scrapeRequestSchema.validate(data, {
+        abortEarly: false,
+        stripUnknown: true
+      });
+
+      if (error) {
+        this.logger.warn('Scrape request validation failed', {
+          errors: error.details
+        });
+        return { error, value: null };
+      }
+
+      return { error: null, value };
+    } catch (err) {
+      this.logger.error('Scrape validation error', { error: err.message });
+      return {
+        error: {
+          details: [{ message: 'Validation service error' }]
+        },
+        value: null
       };
     }
   }

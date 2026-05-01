@@ -102,6 +102,84 @@ class ImageService {
     }
   }
 
+  async optimizeBuffer(imageBuffer) {
+    try {
+      const metadata = await sharp(imageBuffer).metadata();
+
+      if (
+        metadata.width <= this.maxWidth &&
+        metadata.height <= this.maxHeight &&
+        metadata.format === 'jpeg'
+      ) {
+        return imageBuffer;
+      }
+
+      return sharp(imageBuffer)
+        .resize(this.maxWidth, this.maxHeight, {
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .jpeg({
+          quality: this.quality,
+          progressive: true,
+          mozjpeg: true
+        })
+        .toBuffer();
+    } catch (error) {
+      this.logger.error('Image buffer optimization failed', {
+        error: error.message
+      });
+      throw new Error(`Image buffer optimization failed: ${error.message}`);
+    }
+  }
+
+  async bufferToBase64(imageBuffer) {
+    try {
+      return imageBuffer.toString('base64');
+    } catch (error) {
+      this.logger.error('Buffer to base64 conversion failed', {
+        error: error.message
+      });
+      throw new Error(`Buffer to base64 conversion failed: ${error.message}`);
+    }
+  }
+
+  async fetchImageAsPayload(imageUrl, index = 0) {
+    try {
+      this.logger.info('Fetching remote image', { imageUrl, index });
+
+      const response = await fetch(imageUrl, {
+        headers: {
+          'user-agent': 'HackmarketAccessibilityChecker/1.0'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Remote image request failed with status ${response.status}`);
+      }
+
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      const arrayBuffer = await response.arrayBuffer();
+      const originalBuffer = Buffer.from(arrayBuffer);
+      const optimizedBuffer = await this.optimizeBuffer(originalBuffer);
+      const base64 = await this.bufferToBase64(optimizedBuffer);
+
+      return {
+        filename: `scraped_image_${index + 1}.jpg`,
+        base64,
+        size: optimizedBuffer.length,
+        mimetype: contentType
+      };
+    } catch (error) {
+      this.logger.error('Remote image fetch failed', {
+        imageUrl,
+        index,
+        error: error.message
+      });
+      throw new Error(`Remote image fetch failed: ${error.message}`);
+    }
+  }
+
   async validateImage(imagePath) {
     try {
       const metadata = await sharp(imagePath).metadata();

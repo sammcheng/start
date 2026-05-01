@@ -3,6 +3,8 @@ import { api, buildQuery } from "@/lib/api";
 import type { ToolListResponse } from "@/types/tool";
 import MarketplaceClient from "./MarketplaceClient";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Marketplace — Hackmarket",
   description:
@@ -16,7 +18,7 @@ export default async function MarketplacePage() {
   try {
     initialData = await api.get<ToolListResponse>(
       `/tools${buildQuery({ limit: 20, sort_by: "newest" })}`,
-      { next: { revalidate: 60 } }
+      { cache: "no-store" }
     );
   } catch {
     initialFetchFailed = true;

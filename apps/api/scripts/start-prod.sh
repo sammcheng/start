@@ -2,7 +2,7 @@
 set -eu
 
 PORT_TO_BIND="${PORT:-8000}"
-WORKERS="${GUNICORN_WORKERS:-4}"
+WORKERS="${GUNICORN_WORKERS:-1}"
 
 echo "Running database migrations..."
 alembic upgrade head

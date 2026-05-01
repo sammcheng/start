@@ -417,6 +417,15 @@ function validateDynamicFields(fields: DemoSchemaField[], value: Record<string, 
     if (field.type === "url" && fieldValue && !isValidUrl(String(fieldValue))) {
       return `${humanize(field.name)} must be a valid URL.`;
     }
+    if (field.type === "url" && field.name === "url" && fieldValue && !isLikelyPropertyListingUrl(String(fieldValue))) {
+      return "Use a Zillow, Redfin, Realtor, or MLS listing URL for this demo.";
+    }
+    if (field.type === "number" && fieldValue !== undefined && fieldValue !== null && String(fieldValue).trim() !== "") {
+      const numericValue = Number(fieldValue);
+      if (!Number.isFinite(numericValue) || numericValue < 1) {
+        return `${humanize(field.name)} must be at least 1.`;
+      }
+    }
   }
   return null;
 }
@@ -496,6 +505,15 @@ function isValidUrl(value: string) {
   try {
     const url = new URL(value);
     return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isLikelyPropertyListingUrl(value: string) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return ["zillow.com", "redfin.com", "realtor.com", "mls.com"].some((domain) => hostname.includes(domain));
   } catch {
     return false;
   }

@@ -60,9 +60,24 @@ async def ensure_bootstrap_marketplace_data() -> None:
                         "maxImages": 8
                     },
                     "fields": [
-                        {"name": "url", "type": "url", "required": False},
-                        {"name": "images", "type": "file", "required": False},
-                        {"name": "maxImages", "type": "number", "required": False}
+                        {
+                            "name": "url",
+                            "type": "url",
+                            "required": False,
+                            "placeholder": "https://www.zillow.com/homedetails/...",
+                        },
+                        {
+                            "name": "images",
+                            "type": "file",
+                            "required": False,
+                            "placeholder": "Upload listing photos instead of a URL",
+                        },
+                        {
+                            "name": "maxImages",
+                            "type": "number",
+                            "required": False,
+                            "placeholder": "8",
+                        },
                     ]
                 },
                 output_schema={
@@ -115,9 +130,24 @@ async def ensure_bootstrap_marketplace_data() -> None:
                     "maxImages": 8
                 },
                 "fields": [
-                    {"name": "url", "type": "url", "required": False},
-                    {"name": "images", "type": "file", "required": False},
-                    {"name": "maxImages", "type": "number", "required": False}
+                    {
+                        "name": "url",
+                        "type": "url",
+                        "required": False,
+                        "placeholder": "https://www.zillow.com/homedetails/...",
+                    },
+                    {
+                        "name": "images",
+                        "type": "file",
+                        "required": False,
+                        "placeholder": "Upload listing photos instead of a URL",
+                    },
+                    {
+                        "name": "maxImages",
+                        "type": "number",
+                        "required": False,
+                        "placeholder": "8",
+                    },
                 ]
             }
             tool.output_schema = {

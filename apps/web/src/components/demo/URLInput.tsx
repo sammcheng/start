@@ -20,6 +20,9 @@ export default function URLInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder || "https://example.com"}
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
         disabled={disabled}
         className="w-full rounded-2xl border border-stone-700 bg-stone-900 px-4 py-3 text-sm text-stone-100 outline-none transition placeholder:text-stone-500 focus:border-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
       />

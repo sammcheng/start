@@ -1,6 +1,7 @@
 "use client";
 
 import FileInput from "./FileInput";
+import NumberInput from "./NumberInput";
 import TextInput from "./TextInput";
 import URLInput from "./URLInput";
 import type { DemoInputSchema, DemoSchemaField } from "./types";
@@ -73,6 +74,20 @@ function FieldRenderer(props: {
         onChange={(next) => props.onChange(next)}
         disabled={props.disabled}
         error={props.error}
+        accept={props.field.name === "images" ? "image/*" : undefined}
+      />
+    );
+  }
+
+  if (props.field.type === "number") {
+    return (
+      <NumberInput
+        label={label}
+        value={String(props.value ?? "")}
+        onChange={(next) => props.onChange(next)}
+        disabled={props.disabled}
+        error={props.error}
+        placeholder={props.field.placeholder}
       />
     );
   }

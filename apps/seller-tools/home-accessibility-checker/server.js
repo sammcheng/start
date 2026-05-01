@@ -13,13 +13,12 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
-const Joi = require('joi');
 const winston = require('winston');
-const { spawn } = require('child_process');
 
 // Import services
 const ComprehensiveAnalysisService = require('./services/comprehensive-analysis-service');
 const ImageService = require('./services/image-service');
+const ListingScraperService = require('./services/listing-scraper-service');
 const ValidationService = require('./services/validation-service');
 
 // Initialize Express app
@@ -110,6 +109,7 @@ const upload = multer({
 // Initialize services
 const comprehensiveAnalysisService = new ComprehensiveAnalysisService();
 const imageService = new ImageService();
+const listingScraperService = new ListingScraperService();
 const validationService = new ValidationService();
 
 // Health check endpoint
@@ -402,7 +402,18 @@ async function resolveImagesForAnalysis(payload) {
     return payload.images;
   }
 
-  const scrapeResult = await scrapeImagesWithPython(payload.url, payload.maxImages || 10);
+  let scrapeResult;
+  try {
+    scrapeResult = await scrapeImagesWithPython(payload.url, payload.maxImages || 10);
+  } catch (scrapeError) {
+    const error = new Error(
+      scrapeError.userMessage || 'We could not fetch listing images from that URL. Try uploading photos directly instead.'
+    );
+    error.statusCode = scrapeError.statusCode || 502;
+    error.publicError = scrapeError.publicError || 'Listing fetch failed';
+    throw error;
+  }
+
   if (!scrapeResult.images.length) {
     const error = new Error('No images could be scraped from the provided URL');
     error.statusCode = 404;
@@ -435,212 +446,11 @@ async function resolveImagesForAnalysis(payload) {
 
 // Helper function to call Python scraper
 async function scrapeImagesWithPython(url, maxImages) {
-  return new Promise((resolve, reject) => {
-    const pythonPath = process.env.PYTHON_PATH || 'python3';
-    const scraperPath = path.join(__dirname, '..', 'zillow_image_scraper.py');
-    const mockScraperPath = path.join(__dirname, '..', 'mock_scraper.py');
-    
-    logger.info('Calling Python scraper', { 
-      pythonPath, 
-      scraperPath, 
-      url, 
-      maxImages 
-    });
-
-    const pythonProcess = spawn(pythonPath, [scraperPath, url, '--download'], {
-      cwd: path.join(__dirname, '..'),
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-             pythonProcess.on('close', (code) => {
-               if (code === 0) {
-                 try {
-                   // Parse the output to extract image URLs and property details
-                   const { imageUrls, propertyDetails } = parseScraperOutput(stdout);
-                   const processedImages = imageUrls.slice(0, maxImages).map((url, index) => ({
-                     filename: `scraped_image_${index + 1}.jpg`,
-                     url: url,
-                     index: index
-                   }));
-                   
-                   logger.info('Python scraper completed successfully', { 
-                     imageCount: processedImages.length,
-                     propertyDetails: propertyDetails,
-                     stdout: stdout.substring(0, 500) // Log first 500 chars of output
-                   });
-                   resolve({ images: processedImages, propertyDetails });
-                 } catch (error) {
-                   logger.error('Error parsing scraper output', { error: error.message, stdout: stdout });
-                   reject(new Error('Failed to parse scraper output'));
-                 }
-               } else {
-                 logger.error('Python scraper failed, trying mock scraper', { 
-                   code, 
-                   stderr: stderr.trim() 
-                 });
-                 
-                 // Try mock scraper as fallback
-                 const mockProcess = spawn(pythonPath, [mockScraperPath, url, '--download'], {
-                   cwd: path.join(__dirname, '..'),
-                   stdio: ['pipe', 'pipe', 'pipe']
-                 });
-                 
-                 let mockStdout = '';
-                 let mockStderr = '';
-                 
-                 mockProcess.stdout.on('data', (data) => {
-                   mockStdout += data.toString();
-                 });
-                 
-                 mockProcess.stderr.on('data', (data) => {
-                   mockStderr += data.toString();
-                 });
-                 
-                 mockProcess.on('close', (mockCode) => {
-                   if (mockCode === 0) {
-                     try {
-                       const { imageUrls, propertyDetails } = parseScraperOutput(mockStdout);
-                       const processedImages = imageUrls.slice(0, maxImages).map((url, index) => ({
-                         filename: `scraped_image_${index + 1}.jpg`,
-                         url: url,
-                         index: index
-                       }));
-                       
-                       logger.info('Mock scraper completed successfully', { 
-                         imageCount: processedImages.length,
-                         propertyDetails: propertyDetails
-                       });
-                       resolve({ images: processedImages, propertyDetails });
-                     } catch (error) {
-                       logger.error('Error parsing mock scraper output', { error: error.message });
-                       reject(new Error('Failed to parse mock scraper output'));
-                     }
-                   } else {
-                     logger.error('Mock scraper also failed', { 
-                       code: mockCode, 
-                       stderr: mockStderr.trim() 
-                     });
-                     reject(new Error(`Both scrapers failed. Original: ${stderr.trim()}, Mock: ${mockStderr.trim()}`));
-                   }
-                 });
-                 
-                 mockProcess.on('error', (error) => {
-                   logger.error('Mock scraper process error', { error: error.message });
-                   reject(new Error(`Mock scraper process error: ${error.message}`));
-                 });
-               }
-             });
-
-    pythonProcess.on('error', (error) => {
-      logger.error('Python scraper process error', { error: error.message });
-      reject(new Error(`Failed to start Python scraper: ${error.message}`));
-    });
-
-    // Set timeout
-    setTimeout(() => {
-      pythonProcess.kill();
-      reject(new Error('Python scraper timeout'));
-    }, 60000); // 60 second timeout
+  logger.info('Calling listing scraper', {
+    url,
+    maxImages
   });
-}
-
-// Helper function to parse scraper output
-function parseScraperOutput(output) {
-  const imageUrls = [];
-  const propertyDetails = {};
-  const lines = output.split('\n');
-  
-  let inPropertyDetails = false;
-  
-  for (const line of lines) {
-    // Look for lines that contain image URLs
-    if (line.includes('https://photos.zillowstatic.com/')) {
-      const urlMatch = line.match(/https:\/\/photos\.zillowstatic\.com\/[^\s]+/);
-      if (urlMatch) {
-        imageUrls.push(urlMatch[0]);
-      }
-    }
-    
-    // Look for property details section
-    if (line.includes('Property Details:')) {
-      inPropertyDetails = true;
-      continue;
-    }
-    
-    if (inPropertyDetails && line.includes(':')) {
-      const colonIndex = line.indexOf(':');
-      if (colonIndex > 0) {
-        const key = line.substring(0, colonIndex).trim();
-        const value = line.substring(colonIndex + 1).trim();
-        
-        if (key && value) {
-          switch (key.toLowerCase()) {
-            case 'address':
-              propertyDetails.address = value;
-              break;
-            case 'city':
-              propertyDetails.city = value;
-              break;
-            case 'state':
-              propertyDetails.state = value;
-              break;
-            case 'zip':
-              propertyDetails.zipCode = value;
-              break;
-            case 'type':
-              propertyDetails.propertyType = value;
-              break;
-            case 'bedrooms':
-              propertyDetails.bedrooms = value;
-              break;
-            case 'bathrooms':
-              propertyDetails.bathrooms = value;
-              break;
-            case 'square feet':
-              propertyDetails.squareFeet = value;
-              break;
-            case 'year built':
-              propertyDetails.yearBuilt = value;
-              break;
-            case 'lot size':
-              propertyDetails.lotSize = value;
-              break;
-            case 'price':
-              propertyDetails.price = value;
-              break;
-          }
-        }
-      }
-    }
-  }
-  
-  // If no property details were found, provide defaults
-  if (Object.keys(propertyDetails).length === 0) {
-    propertyDetails.address = 'Property from URL';
-    propertyDetails.city = 'Unknown';
-    propertyDetails.state = 'Unknown';
-    propertyDetails.zipCode = '00000';
-    propertyDetails.propertyType = 'Property';
-    propertyDetails.bedrooms = 'N/A';
-    propertyDetails.bathrooms = 'N/A';
-    propertyDetails.squareFeet = 'N/A';
-    propertyDetails.yearBuilt = 'N/A';
-    propertyDetails.lotSize = 'N/A';
-    propertyDetails.price = 'N/A';
-  }
-  
-  return { imageUrls, propertyDetails };
+  return await listingScraperService.scrape(url, maxImages);
 }
 
 // Error handling middleware

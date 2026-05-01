@@ -482,7 +482,7 @@ function HowItWorks() {
   );
 }
 
-function MiniToolCard({ tool }: { tool: Tool }) {
+function MiniToolCard({ tool, href }: { tool: Tool; href?: string }) {
   const color = CAT_COLORS[tool.category] ?? "#6b7280";
   const price = parseFloat(tool.price_per_request ?? "0");
   const priceStr = price === 0 ? "Free" : price < 0.01 ? `$${price.toFixed(4)}` : `$${price.toFixed(3)}`;
@@ -490,9 +490,10 @@ function MiniToolCard({ tool }: { tool: Tool }) {
     tool.total_requests >= 1000
       ? `${(tool.total_requests / 1000).toFixed(1)}k`
       : String(tool.total_requests);
+  const cardHref = href ?? `/tools/${tool.slug}`;
 
   return (
-    <Link href={`/tools/${tool.slug}`} className="group block">
+    <Link href={cardHref} className="group block">
       <article
         className="h-full rounded-xl border p-5 transition-all duration-200"
         style={{ background: "var(--card)", borderColor: "var(--border)" }}
@@ -571,7 +572,8 @@ function MiniToolCard({ tool }: { tool: Tool }) {
 }
 
 function FeaturedTools({ tools }: { tools: Tool[] }) {
-  const display = tools.length > 0 ? tools : PLACEHOLDER_TOOLS;
+  const hasRealTools = tools.length > 0;
+  const display = hasRealTools ? tools : PLACEHOLDER_TOOLS;
 
   return (
     <section
@@ -606,7 +608,7 @@ function FeaturedTools({ tools }: { tools: Tool[] }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 reveal-group">
           {display.map((tool) => (
             <div key={tool.id} className="reveal">
-              <MiniToolCard tool={tool} />
+              <MiniToolCard tool={tool} href={hasRealTools ? undefined : "/marketplace"} />
             </div>
           ))}
         </div>

@@ -79,11 +79,12 @@ async def upload_tool_source(
         source_s3_key = f"tools/{tool_id}/source.zip"
         await storage_service.upload_bytes(source_s3_key, file_bytes, "application/zip")
 
+        should_start_processing = bool(tool.entry_command)
         updates = ToolUpdate(
             github_url=None,
             source_s3_key=source_s3_key,
             source_file_tree=source_file_tree,
-            status=ToolStatus.processing,
+            status=ToolStatus.processing if should_start_processing else ToolStatus.draft,
             processing_error=None,
         )
     else:
@@ -97,16 +98,18 @@ async def upload_tool_source(
                 details={"errors": exc.errors()},
             ) from exc
         source_file_tree = [_github_preview_label(payload.github_url)]
+        should_start_processing = bool(tool.entry_command)
         updates = ToolUpdate(
             github_url=str(payload.github_url),
             source_s3_key=None,
             source_file_tree=source_file_tree,
-            status=ToolStatus.processing,
+            status=ToolStatus.processing if should_start_processing else ToolStatus.draft,
             processing_error=None,
         )
 
     updated = await tool_service.update_tool(db, tool, updates)
-    background_tasks.add_task(container_service.process_tool_upload, tool_id)
+    if should_start_processing:
+        background_tasks.add_task(container_service.process_tool_upload, tool_id)
 
     return ToolUploadResponse(
         tool_id=updated.id,
@@ -123,6 +126,7 @@ async def upload_tool_source(
 )
 async def configure_tool(
     tool_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     body: ToolConfigureRequest,
     tool: Tool = Depends(_get_owned_tool),
     db: AsyncSession = Depends(get_db),
@@ -143,6 +147,13 @@ async def configure_tool(
             config_s3_key=config_s3_key,
         ),
     )
+    if updated.status in {ToolStatus.draft, ToolStatus.rejected} and (updated.source_s3_key or updated.github_url):
+        updated = await tool_service.update_tool(
+            db,
+            updated,
+            ToolUpdate(status=ToolStatus.processing, processing_error=None),
+        )
+        background_tasks.add_task(container_service.process_tool_upload, tool_id)
     return ToolResponse.model_validate(updated)
 
 

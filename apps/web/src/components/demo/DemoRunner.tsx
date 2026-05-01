@@ -359,22 +359,48 @@ function buildPayload(args: {
 
 function normalizeFieldValue(field: DemoSchemaField, value: unknown) {
   if (field.type === "number") {
-    return Number(value ?? 0);
+    const raw = typeof value === "string" ? value.trim() : value;
+    if (raw === "" || raw === null || raw === undefined) {
+      return undefined;
+    }
+    return Number(raw);
   }
   if (field.type === "file") {
     const file = value as FileValue;
-    return file
-      ? {
+    if (!file) {
+      return undefined;
+    }
+
+    if (field.name === "images") {
+      return [
+        {
           filename: file.name,
-          content: file.content,
-          mime_type: file.mimeType,
-        }
-      : null;
+          base64: file.content,
+          mimetype: file.mimeType,
+        },
+      ];
+    }
+
+    return {
+      filename: file.name,
+      base64: file.content,
+      mimetype: file.mimeType,
+    };
   }
   return value;
 }
 
 function validateDynamicFields(fields: DemoSchemaField[], value: Record<string, unknown>) {
+  const imageField = fields.find((field) => field.name === "images" && field.type === "file");
+  const urlField = fields.find((field) => field.name === "url" && field.type === "url");
+  if (imageField && urlField) {
+    const hasImage = Boolean(value.images);
+    const hasUrl = Boolean(String(value.url ?? "").trim());
+    if (!hasImage && !hasUrl) {
+      return "Provide either a property URL or an image before running the demo.";
+    }
+  }
+
   for (const field of fields) {
     const fieldValue = value[field.name];
     if (field.required) {

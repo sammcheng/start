@@ -431,11 +431,35 @@ function validateDynamicFields(fields: DemoSchemaField[], value: Record<string, 
 }
 
 function extractErrorMessage(data: unknown, status: number) {
-  const message =
-    typeof data === "object" && data && "error" in data && typeof data.error === "object" && data.error && "message" in data.error
-      ? String((data.error as { message?: unknown }).message ?? "")
-      : null;
-  return message || `The demo request failed with status ${status}.`;
+  if (typeof data === "object" && data) {
+    const payload = data as {
+      message?: unknown;
+      error?: unknown;
+      details?: Array<{ message?: unknown }>;
+    };
+
+    if (typeof payload.message === "string" && payload.message.trim()) {
+      return payload.message;
+    }
+
+    if (Array.isArray(payload.details) && payload.details.length > 0) {
+      const firstDetail = payload.details[0];
+      if (typeof firstDetail?.message === "string" && firstDetail.message.trim()) {
+        return firstDetail.message;
+      }
+    }
+
+    if (
+      typeof payload.error === "object" &&
+      payload.error &&
+      "message" in payload.error &&
+      typeof (payload.error as { message?: unknown }).message === "string"
+    ) {
+      return String((payload.error as { message?: unknown }).message ?? "");
+    }
+  }
+
+  return `The demo request failed with status ${status}.`;
 }
 
 async function parseResponse(response: Response) {

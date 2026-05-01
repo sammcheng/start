@@ -1,11 +1,11 @@
 services:
   - type: web
-    name: hackmarket-api
+    name: start
     runtime: docker
-    plan: starter
+    plan: free
     region: oregon
-    dockerfilePath: ./apps/api/Dockerfile.prod
-    dockerContext: ./apps/api
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /health
     autoDeployTrigger: checksPass
     envVars:
@@ -45,12 +45,12 @@ services:
 
   - type: keyvalue
     name: hackmarket-redis
-    plan: starter
+    plan: free
     region: oregon
     maxmemoryPolicy: noeviction
 
 databases:
   - name: hackmarket-db
-    plan: starter
+    plan: basic_256mb
     region: oregon
     postgresMajorVersion: "16"

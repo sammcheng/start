@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
 
+    # Marketplace bootstrap
+    enable_bootstrap_tool_seed: bool = False
+    bootstrap_tool_api_endpoint: str = ""
+
     # ---------------------------------------------------------------------------
     # Grouped access
     # ---------------------------------------------------------------------------

@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "https://hackmarket.io", "https://www.hackmarket.io", "https://web-six-dusky-20.vercel.app"]
     cors_origin_regex: str = r"^https://.*\.vercel\.app$"
     app_base_url: str = "http://localhost:3000"
-    public_api_base_url: str = "http://localhost:8000"
+    public_api_base_url: str = ""
 
     # Database
     database_url: str

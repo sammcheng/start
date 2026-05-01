@@ -54,11 +54,27 @@ async def ensure_bootstrap_marketplace_data() -> None:
                 input_type=InputType.json,
                 output_type=OutputType.json,
                 input_schema={
+                    "example_input": {
+                        "images": [
+                            {
+                                "filename": "kitchen.jpg",
+                                "base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
+                            }
+                        ]
+                    },
                     "fields": [
                         {"name": "images", "type": "file", "required": True}
                     ]
                 },
                 output_schema={
+                    "example_output": {
+                        "success": True,
+                        "analysis": {
+                            "overall_score": 78,
+                            "summary": "Two accessibility barriers found near the entry path.",
+                        },
+                        "timestamp": "2026-05-01T00:00:00Z",
+                    },
                     "type": "json",
                     "properties": {
                         "success": {"type": "boolean"},
@@ -88,11 +104,27 @@ async def ensure_bootstrap_marketplace_data() -> None:
             tool.input_type = InputType.json
             tool.output_type = OutputType.json
             tool.input_schema = {
+                "example_input": {
+                    "images": [
+                        {
+                            "filename": "kitchen.jpg",
+                            "base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
+                        }
+                    ]
+                },
                 "fields": [
                     {"name": "images", "type": "file", "required": True}
                 ]
             }
             tool.output_schema = {
+                "example_output": {
+                    "success": True,
+                    "analysis": {
+                        "overall_score": 78,
+                        "summary": "Two accessibility barriers found near the entry path.",
+                    },
+                    "timestamp": "2026-05-01T00:00:00Z",
+                },
                 "type": "json",
                 "properties": {
                     "success": {"type": "boolean"},

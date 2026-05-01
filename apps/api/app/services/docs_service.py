@@ -9,7 +9,7 @@ DEFAULT_RATE_LIMIT_PER_MINUTE = 100
 
 
 def generate_tool_docs(tool: Tool) -> ToolDocumentation:
-    endpoint_url = f"{settings.public_api_base_url.rstrip('/')}/api/v1/tools/{tool.slug}"
+    endpoint_url = f"{_public_api_base()}/api/v1/tools/{tool.slug}"
     method = "POST"
     request_example = _build_request_example(tool)
     response_example = _build_response_example(tool)
@@ -131,6 +131,14 @@ def _example_from_output_type(output_type: OutputType | None) -> dict | str:
     if output_type == OutputType.file:
         return {"download_url": "https://cdn.hackmarket.io/generated-file.pdf"}
     return {"result": {"status": "ok", "data": {"message": "Success"}}}
+
+
+def _public_api_base() -> str:
+    if settings.public_api_base_url:
+        return settings.public_api_base_url.rstrip("/")
+    if settings.environment == "production":
+        return "https://start-3lbd.onrender.com"
+    return "http://localhost:8000"
 
 
 def _curl_example(endpoint_url: str, request_json: str) -> str:

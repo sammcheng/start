@@ -334,7 +334,10 @@ function buildPayload(args: {
   if (args.dynamicFields.length) {
     const payload: Record<string, unknown> = {};
     for (const field of args.dynamicFields) {
-      payload[field.name] = normalizeFieldValue(field, args.dynamicValue[field.name]);
+      const normalized = normalizeFieldValue(field, args.dynamicValue[field.name]);
+      if (normalized !== undefined && normalized !== null && normalized !== "") {
+        payload[field.name] = normalized;
+      }
     }
     return payload;
   }

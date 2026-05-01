@@ -33,7 +33,7 @@ export default function DynamicForm({ schema, value, onChange, disabled, errors 
         <FieldRenderer
           key={field.name}
           field={field}
-          value={value[field.name] ?? (field.type === "number" ? 0 : field.type === "file" ? null : "")}
+          value={value[field.name] ?? (field.type === "number" ? "" : field.type === "file" ? null : "")}
           disabled={disabled}
           error={errors[field.name] ?? null}
           onChange={(next) => onChange({ ...value, [field.name]: next })}

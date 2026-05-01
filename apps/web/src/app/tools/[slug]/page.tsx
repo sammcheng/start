@@ -7,12 +7,14 @@ import type { Tool } from "@/types/tool";
 import type { ToolDocumentation } from "@/types/docs";
 import DemoRunner from "@/components/demo/DemoRunner";
 
+export const dynamic = "force-dynamic";
+
 // ── Data ───────────────────────────────────────────────────────────────────
 
 async function fetchTool(slug: string): Promise<Tool | null> {
   try {
     return await api.get<Tool>(`/tools/${slug}`, {
-      next: { revalidate: 120 },
+      cache: "no-store",
     });
   } catch {
     return null;
@@ -22,7 +24,7 @@ async function fetchTool(slug: string): Promise<Tool | null> {
 async function fetchToolDocs(slug: string): Promise<ToolDocumentation | null> {
   try {
     return await api.get<ToolDocumentation>(`/tools/${slug}/docs`, {
-      next: { revalidate: 120 },
+      cache: "no-store",
     });
   } catch {
     return null;

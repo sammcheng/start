@@ -226,12 +226,13 @@ async def run_tool_demo(
 )
 async def get_tool_docs(
     slug: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> ToolDocumentation:
     tool = await tool_service.get_tool_by_slug(db, slug)
     if not tool:
         raise ToolNotFoundError(slug)
-    return docs_service.generate_tool_docs(tool)
+    return docs_service.generate_tool_docs(tool, public_api_base_url=str(request.base_url).rstrip("/"))
 
 
 # ---------------------------------------------------------------------------

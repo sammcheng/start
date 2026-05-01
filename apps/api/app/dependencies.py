@@ -2,11 +2,12 @@ import logging
 import time
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from typing import Annotated
 
 import httpx
 import redis.asyncio as aioredis
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header
 from jose import JWTError, jwt
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -15,6 +16,7 @@ from app.config import settings
 from app.exceptions import Forbidden, InvalidAPIKeyError, Unauthorized
 from app.models import APIKey, User
 from app.models.user import UserRole
+from app.services.auth_service import AuthIdentity
 from app.utils.hashing import hash_api_key
 
 logger = logging.getLogger(__name__)
@@ -56,33 +58,54 @@ async def get_redis() -> aioredis.Redis:
 # ---------------------------------------------------------------------------
 
 # In-memory JWKS cache: {"keys": [...], "fetched_at": float}
-_jwks_cache: dict = {}
+_jwks_cache: dict[str, dict] = {}
 _JWKS_TTL = 3600  # seconds before re-fetching
 
 
-async def _get_jwks() -> list[dict]:
-    now = time.monotonic()
-    if _jwks_cache.get("keys") and now - _jwks_cache.get("fetched_at", 0) < _JWKS_TTL:
-        return _jwks_cache["keys"]
+def _jwks_url_from_issuer(issuer: str) -> str:
+    parsed = urlparse(issuer)
+    if parsed.scheme != "https":
+        raise Unauthorized("Unsupported token issuer.")
 
-    jwks_url = settings.clerk_jwks_url
-    if not jwks_url:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "MISCONFIGURATION", "message": "CLERK_JWKS_URL is not set."},
-        )
+    host = parsed.netloc.lower()
+    allowed_suffixes = (".clerk.accounts.dev", ".clerk.com", ".clerkstage.dev")
+    if not (host.endswith(allowed_suffixes) or host == "clerk.com"):
+        raise Unauthorized("Unsupported token issuer.")
+
+    return f"{issuer.rstrip('/')}/.well-known/jwks.json"
+
+
+def _resolve_jwks_url(token: str) -> str:
+    if settings.clerk_jwks_url:
+        return settings.clerk_jwks_url
+
+    try:
+        claims = jwt.get_unverified_claims(token)
+    except JWTError as exc:
+        raise Unauthorized("Malformed JWT claims.") from exc
+
+    issuer = claims.get("iss")
+    if not issuer or not isinstance(issuer, str):
+        raise Unauthorized("Token issuer missing.")
+    return _jwks_url_from_issuer(issuer)
+
+
+async def _get_jwks(jwks_url: str) -> list[dict]:
+    now = time.monotonic()
+    cached = _jwks_cache.get(jwks_url)
+    if cached and now - cached.get("fetched_at", 0) < _JWKS_TTL:
+        return cached["keys"]
 
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(jwks_url)
         resp.raise_for_status()
         data = resp.json()
 
-    _jwks_cache["keys"] = data["keys"]
-    _jwks_cache["fetched_at"] = now
+    _jwks_cache[jwks_url] = {"keys": data["keys"], "fetched_at": now}
     return data["keys"]
 
 
-async def _verify_clerk_jwt(token: str) -> dict:
+async def verify_clerk_identity(token: str) -> AuthIdentity:
     """Validate a Clerk JWT and return its decoded claims."""
     try:
         header = jwt.get_unverified_header(token)
@@ -90,13 +113,14 @@ async def _verify_clerk_jwt(token: str) -> dict:
         raise Unauthorized("Malformed JWT.") from exc
 
     kid = header.get("kid")
-    keys = await _get_jwks()
+    jwks_url = _resolve_jwks_url(token)
+    keys = await _get_jwks(jwks_url)
     jwk = next((k for k in keys if k.get("kid") == kid), None)
 
     if jwk is None:
         # Key may have rotated — flush cache and retry once
-        _jwks_cache.clear()
-        keys = await _get_jwks()
+        _jwks_cache.pop(jwks_url, None)
+        keys = await _get_jwks(jwks_url)
         jwk = next((k for k in keys if k.get("kid") == kid), None)
 
     if jwk is None:
@@ -107,7 +131,34 @@ async def _verify_clerk_jwt(token: str) -> dict:
     except JWTError as exc:
         raise Unauthorized("Token verification failed.") from exc
 
-    return claims
+    email = claims.get("email")
+    if not isinstance(email, str):
+        email = None
+
+    username = claims.get("username") or claims.get("preferred_username")
+    if not isinstance(username, str):
+        username = None
+
+    name = claims.get("name")
+    if not isinstance(name, str):
+        given_name = claims.get("given_name")
+        family_name = claims.get("family_name")
+        if isinstance(given_name, str) or isinstance(family_name, str):
+            name = " ".join(part for part in [given_name, family_name] if isinstance(part, str) and part).strip()
+        else:
+            name = None
+
+    avatar_url = claims.get("picture")
+    if not isinstance(avatar_url, str):
+        avatar_url = None
+
+    return AuthIdentity(
+        clerk_id=str(claims["sub"]),
+        email=email,
+        username=username,
+        display_name=name,
+        avatar_url=avatar_url,
+    )
 
 
 def _extract_bearer(authorization: str | None) -> str:
@@ -131,8 +182,8 @@ async def get_current_user(
     Raises 401 if the token is invalid or the user is not found / inactive.
     """
     token = _extract_bearer(authorization)
-    claims = await _verify_clerk_jwt(token)
-    clerk_id: str = claims["sub"]
+    identity = await verify_clerk_identity(token)
+    clerk_id = identity.clerk_id
 
     result = await db.execute(
         select(User).where(User.clerk_id == clerk_id, User.is_active.is_(True))
@@ -141,6 +192,13 @@ async def get_current_user(
     if not user:
         raise Unauthorized("No active account found. Please complete registration.")
     return user
+
+
+async def get_current_identity(
+    authorization: Annotated[str | None, Header()] = None,
+) -> AuthIdentity:
+    token = _extract_bearer(authorization)
+    return await verify_clerk_identity(token)
 
 
 async def require_seller(

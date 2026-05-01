@@ -1,14 +1,15 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from svix.webhooks import Webhook, WebhookVerificationError
 
 from app.config import settings
-from app.dependencies import get_db
+from app.dependencies import get_current_identity, get_db
 from app.models import User
-from fastapi import Depends
+from app.schemas.auth import AuthSyncRequest, AuthSyncResponse
+from app.services.auth_service import AuthIdentity, sync_user_from_identity
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,25 @@ def _display_name(clerk_user: dict) -> str:
 # ---------------------------------------------------------------------------
 # Webhook endpoint
 # ---------------------------------------------------------------------------
+
+
+@router.post("/sync", response_model=AuthSyncResponse, summary="Create or refresh the signed-in user")
+async def sync_authenticated_user(
+    body: AuthSyncRequest,
+    identity: AuthIdentity = Depends(get_current_identity),
+    db: AsyncSession = Depends(get_db),
+) -> AuthSyncResponse:
+    user = await sync_user_from_identity(db, identity, body)
+    return AuthSyncResponse(
+        id=str(user.id),
+        clerk_id=user.clerk_id,
+        email=user.email,
+        username=user.username,
+        display_name=user.display_name,
+        avatar_url=user.avatar_url,
+        role=user.role.value,
+        is_active=user.is_active,
+    )
 
 
 @router.post("/webhook", status_code=status.HTTP_204_NO_CONTENT)
@@ -112,39 +132,49 @@ async def _handle_user_created(
         return
 
     username = clerk_user.get("username") or clerk_id
-    user = User(
-        clerk_id=clerk_id,
-        email=email,
-        username=username,
-        display_name=_display_name(clerk_user),
-        avatar_url=clerk_user.get("image_url"),
+    await sync_user_from_identity(
+        db,
+        AuthIdentity(
+            clerk_id=clerk_id,
+            email=email,
+            username=username,
+            display_name=_display_name(clerk_user),
+            avatar_url=clerk_user.get("image_url"),
+        ),
+        AuthSyncRequest(
+            email=email,
+            username=username,
+            display_name=_display_name(clerk_user),
+            avatar_url=clerk_user.get("image_url"),
+        ),
     )
-    db.add(user)
-    await db.commit()
     logger.info("user.created: Created local user for clerk_id=%s", clerk_id)
 
 
 async def _handle_user_updated(
     db: AsyncSession, clerk_id: str, clerk_user: dict
 ) -> None:
-    result = await db.execute(select(User).where(User.clerk_id == clerk_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        # Can happen if webhook fires before user.created; treat as create
-        logger.warning("user.updated: User %s not found, creating instead", clerk_id)
-        await _handle_user_created(db, clerk_id, clerk_user)
+    email = _primary_email(clerk_user)
+    if not email:
+        logger.error("user.updated: No primary email for clerk_id=%s", clerk_id)
         return
 
-    email = _primary_email(clerk_user)
-    if email:
-        user.email = email
-    if clerk_user.get("username"):
-        user.username = clerk_user["username"]
-    user.display_name = _display_name(clerk_user)
-    if clerk_user.get("image_url") is not None:
-        user.avatar_url = clerk_user["image_url"]
-
-    await db.commit()
+    await sync_user_from_identity(
+        db,
+        AuthIdentity(
+            clerk_id=clerk_id,
+            email=email,
+            username=clerk_user.get("username") or clerk_id,
+            display_name=_display_name(clerk_user),
+            avatar_url=clerk_user.get("image_url"),
+        ),
+        AuthSyncRequest(
+            email=email,
+            username=clerk_user.get("username") or clerk_id,
+            display_name=_display_name(clerk_user),
+            avatar_url=clerk_user.get("image_url"),
+        ),
+    )
     logger.info("user.updated: Updated local user for clerk_id=%s", clerk_id)
 
 

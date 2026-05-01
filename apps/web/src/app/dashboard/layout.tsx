@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuth, useUser } from "@clerk/nextjs";
+import { UserButton, useAuth, useUser } from "@clerk/nextjs";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -178,14 +178,27 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {/* User info */}
         <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid var(--border)" }}>
           <div style={{ padding: "10px 12px" }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: "50%",
-              background: "var(--blue-dim)", border: "1px solid rgba(37,99,235,.18)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 12, fontWeight: 700, color: "var(--blue)", marginBottom: 8,
-              fontFamily: "var(--font-mono)",
-            }}>
-              {initials}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: "50%",
+                background: "var(--blue-dim)", border: "1px solid rgba(37,99,235,.18)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 12, fontWeight: 700, color: "var(--blue)",
+                fontFamily: "var(--font-mono)",
+              }}>
+                {initials}
+              </div>
+              <UserButton
+                afterSignOutUrl="/"
+                appearance={{
+                  elements: {
+                    avatarBox: {
+                      width: "28px",
+                      height: "28px",
+                    },
+                  },
+                }}
+              />
             </div>
             <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{displayName}</div>
             {email && (

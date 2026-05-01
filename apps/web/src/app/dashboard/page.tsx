@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import type { DashboardSummaryResponse } from "@/types/dashboard";
 
 const QUICK_LINKS = [
@@ -17,18 +17,31 @@ export default function DashboardPage() {
   const { getToken, isLoaded } = useAuth();
   const { user } = useUser();
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadSummary = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      const data = await api.get<DashboardSummaryResponse>("/dashboard/summary", { token });
+      setSummary(data);
+    } catch (loadError) {
+      setError(
+        loadError instanceof ApiError
+          ? loadError.message
+          : "We couldn’t load your dashboard right now."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getToken]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    async function load() {
-      try {
-        const token = await getToken();
-        const data = await api.get<DashboardSummaryResponse>("/dashboard/summary", { token });
-        setSummary(data);
-      } catch { /* ignore */ }
-    }
-    void load();
-  }, [getToken, isLoaded]);
+    void loadSummary();
+  }, [isLoaded, loadSummary]);
 
   const displayName =
     summary?.display_name ||
@@ -59,7 +72,11 @@ export default function DashboardPage() {
       {/* Stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 28 }}>
         {stats.map((s) => (
-          <div key={s.label} className="stat-card">
+          <div
+            key={s.label}
+            className="stat-card"
+            style={isLoading ? { opacity: 0.75 } : undefined}
+          >
             <p style={{ fontSize: 10.5, fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".1em", color: "var(--faint)", marginBottom: 14 }}>
               {s.label}
             </p>
@@ -70,6 +87,39 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {error ? (
+        <div
+          style={{
+            marginBottom: 16,
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.25)",
+            borderRadius: 12,
+            padding: "14px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <p style={{ fontSize: 13, color: "#fecaca" }}>{error}</p>
+          <button
+            type="button"
+            onClick={() => void loadSummary()}
+            style={{
+              borderRadius: 8,
+              border: "1px solid rgba(255,255,255,0.12)",
+              padding: "8px 12px",
+              background: "transparent",
+              color: "white",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
 
       {/* Main grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr .6fr", gap: 16 }}>
@@ -89,7 +139,11 @@ export default function DashboardPage() {
               View all →
             </Link>
           </div>
-          {summary?.recent_activity?.length ? (
+          {isLoading ? (
+            <div style={{ padding: "40px 20px", fontSize: 13, color: "var(--faint)", fontFamily: "var(--font-mono)" }}>
+              Loading recent activity…
+            </div>
+          ) : summary?.recent_activity?.length ? (
             <table className="data-table">
               <thead>
                 <tr><th>Tool</th><th>Status</th><th>Latency</th><th>Cost</th><th>When</th></tr>

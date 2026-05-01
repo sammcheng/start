@@ -10,7 +10,7 @@ from starlette.requests import Request
 from app.config import settings
 from app.middleware.error_handler import setup_error_handlers
 from app.request_context import get_request_id, reset_request_id, set_request_id
-from app.services import billing_service, bootstrap_service
+from app.services import billing_service
 
 
 class RequestIdFilter(logging.Filter):
@@ -33,7 +33,6 @@ PRODUCTION_ORIGIN = "https://hackmarket.io"
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     logger.info("Starting Hackmarket API (env=%s)", settings.environment)
-    await bootstrap_service.ensure_bootstrap_marketplace_data()
     scheduler_stop = asyncio.Event()
     scheduler_task = asyncio.create_task(billing_service.run_scheduler_loop(scheduler_stop))
     yield

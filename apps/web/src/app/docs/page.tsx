@@ -2,15 +2,23 @@ import type { ReactNode } from "react";
 
 import CodeBlock from "@/components/docs/CodeBlock";
 
+const publicApiBase = (process.env.NEXT_PUBLIC_API_URL ?? "https://start-3lbd.onrender.com/v1").replace(/\/v1$/, "");
+const sampleEndpoint = `${publicApiBase}/api/v1/tools/home-accessibility-checker`;
+
 const gettingStartedExamples = [
   {
     language: "curl" as const,
     label: "cURL",
-    code: `curl -X POST https://api.hackmarket.io/api/v1/tools/text-summarizer \\
+    code: `curl -X POST ${sampleEndpoint} \\
   -H "X-API-Key: your_api_key_here" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "text": "Paste the content you want the tool to process."
+    "images": [
+      {
+        "filename": "kitchen.jpg",
+        "base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ..."
+      }
+    ]
   }'`,
   },
   {
@@ -19,9 +27,16 @@ const gettingStartedExamples = [
     code: `import requests
 
 response = requests.post(
-    "https://api.hackmarket.io/api/v1/tools/text-summarizer",
+    "${sampleEndpoint}",
     headers={"X-API-Key": "your_api_key_here"},
-    json={"text": "Paste the content you want the tool to process."},
+    json={
+        "images": [
+            {
+                "filename": "kitchen.jpg",
+                "base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
+            }
+        ]
+    },
     timeout=30,
 )
 
@@ -30,14 +45,19 @@ print(response.json())`,
   {
     language: "javascript" as const,
     label: "JavaScript",
-    code: `const response = await fetch("https://api.hackmarket.io/api/v1/tools/text-summarizer", {
+    code: `const response = await fetch("${sampleEndpoint}", {
   method: "POST",
   headers: {
     "X-API-Key": "your_api_key_here",
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    text: "Paste the content you want the tool to process.",
+    images: [
+      {
+        filename: "kitchen.jpg",
+        base64: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
+      },
+    ],
   }),
 });
 
@@ -50,8 +70,15 @@ console.log(await response.json());`,
 
 async function main() {
   const response = await axios.post(
-    "https://api.hackmarket.io/api/v1/tools/text-summarizer",
-    { text: "Paste the content you want the tool to process." },
+    "${sampleEndpoint}",
+    {
+      images: [
+        {
+          filename: "kitchen.jpg",
+          base64: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
+        },
+      ],
+    },
     { headers: { "X-API-Key": "your_api_key_here" } }
   );
 
@@ -80,7 +107,7 @@ export default function DocsPage() {
               <ol style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13.5, lineHeight: 1.7, color: "var(--muted)", listStyle: "none", padding: 0, margin: 0 }}>
                 <li>1. Create an account and finish seller or buyer onboarding.</li>
                 <li>2. Generate an API key from your dashboard.</li>
-                <li>3. Pick a live tool in the marketplace and copy its endpoint.</li>
+                <li>3. Pick a live tool in the marketplace, copy its gateway endpoint, and send requests through Hackmarket.</li>
                 <li>4. Send your first request with X-API-Key and a JSON body.</li>
               </ol>
             </DocCard>
@@ -102,7 +129,7 @@ export default function DocsPage() {
             <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
               <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)" }}>
                 <p style={{ fontSize: 10.5, fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: ".1em", color: "var(--faint)", marginBottom: 4 }}>First request</p>
-                <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>A clean baseline to copy from</p>
+                <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>A real request shape to copy from</p>
               </div>
               <div style={{ padding: 20 }}>
                 <CodeBlock examples={gettingStartedExamples} />

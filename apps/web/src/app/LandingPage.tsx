@@ -24,69 +24,10 @@ const SNIPPETS = [
   { text: "GET /v1/tools?category=nlp&sort_by=popular  → 200",      left: "54%", delay: "9s",   dur: "21s" },
   { text: 'import hackmarket; tool.run(text="hello world")',         left: "70%", delay: "4s",   dur: "25s" },
   { text: "200 OK · 94ms · $0.0008 · model: gpt-4-turbo",          left: "82%", delay: "13s",  dur: "18s" },
-  { text: "curl -X POST api.hackmarket.io/api/v1/tools/img-classifier", left: "12%", delay: "16s",  dur: "22s" },
+  { text: "curl -X POST /api/v1/tools/home-accessibility-checker", left: "12%", delay: "16s",  dur: "22s" },
   { text: '{"tokens_used":847,"cost_usd":0.0041}',                  left: "44%", delay: "11s",  dur: "20s" },
   { text: "POST /api/v1/tools/code-review  → 200  1240ms",          left: "62%", delay: "7s",   dur: "26s" },
   { text: "response = requests.post(endpoint, json={'input':q})",    left: "88%", delay: "3s",   dur: "16s" },
-];
-
-const PLACEHOLDER_TOOLS: Tool[] = [
-  {
-    id: "1", name: "Sentiment Analyzer", slug: "sentiment-analyzer",
-    tagline: "Detect emotion and tone in any text with 94% accuracy.",
-    category: "nlp", status: "live", ownership_type: "royalty",
-    input_type: "text", output_type: "json",
-    price_per_request: "0.0008", avg_response_time_ms: 87,
-    total_requests: 145892, is_featured: true, view_count: 0,
-    input_schema: null, output_schema: null,
-    demo_url: null, api_endpoint: null, docker_image_uri: null,
-    github_url: null, documentation: null, uptime_percentage: "99.8",
-    seller_id: "s1", description: "",
-    seller: { id: "s1", display_name: "ML Studio", avatar_url: null, username: "mlstudio" },
-    created_at: "", updated_at: "",
-  },
-  {
-    id: "2", name: "Image Classifier", slug: "image-classifier",
-    tagline: "Label images across 1,000 categories in under 200ms.",
-    category: "computer_vision", status: "live", ownership_type: "royalty",
-    input_type: "image", output_type: "json",
-    price_per_request: "0.0025", avg_response_time_ms: 160,
-    total_requests: 89341, is_featured: true, view_count: 0,
-    input_schema: null, output_schema: null,
-    demo_url: null, api_endpoint: null, docker_image_uri: null,
-    github_url: null, documentation: null, uptime_percentage: "99.9",
-    seller_id: "s2", description: "",
-    seller: { id: "s2", display_name: "Vision Labs", avatar_url: null, username: "visionlabs" },
-    created_at: "", updated_at: "",
-  },
-  {
-    id: "3", name: "CSV Insights", slug: "csv-insights",
-    tagline: "Upload a CSV, get natural-language summaries and charts.",
-    category: "data_analysis", status: "live", ownership_type: "royalty",
-    input_type: "csv", output_type: "json",
-    price_per_request: "0.0050", avg_response_time_ms: 420,
-    total_requests: 34217, is_featured: true, view_count: 0,
-    input_schema: null, output_schema: null,
-    demo_url: null, api_endpoint: null, docker_image_uri: null,
-    github_url: null, documentation: null, uptime_percentage: "99.5",
-    seller_id: "s3", description: "",
-    seller: { id: "s3", display_name: "DataCraft", avatar_url: null, username: "datacraft" },
-    created_at: "", updated_at: "",
-  },
-  {
-    id: "4", name: "Code Reviewer", slug: "code-reviewer",
-    tagline: "Automated PR reviews with actionable, language-aware feedback.",
-    category: "automation", status: "live", ownership_type: "royalty",
-    input_type: "text", output_type: "json",
-    price_per_request: "0.0120", avg_response_time_ms: 1240,
-    total_requests: 22890, is_featured: true, view_count: 0,
-    input_schema: null, output_schema: null,
-    demo_url: null, api_endpoint: null, docker_image_uri: null,
-    github_url: null, documentation: null, uptime_percentage: "99.7",
-    seller_id: "s4", description: "",
-    seller: { id: "s4", display_name: "DevBot AI", avatar_url: null, username: "devbotai" },
-    created_at: "", updated_at: "",
-  },
 ];
 
 const TICKER_ITEMS = [
@@ -571,9 +512,8 @@ function MiniToolCard({ tool, href }: { tool: Tool; href?: string }) {
   );
 }
 
-function FeaturedTools({ tools }: { tools: Tool[] }) {
+function FeaturedTools({ tools, unavailable }: { tools: Tool[]; unavailable: boolean }) {
   const hasRealTools = tools.length > 0;
-  const display = hasRealTools ? tools : PLACEHOLDER_TOOLS;
 
   return (
     <section
@@ -605,13 +545,32 @@ function FeaturedTools({ tools }: { tools: Tool[] }) {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 reveal-group">
-          {display.map((tool) => (
-            <div key={tool.id} className="reveal">
-              <MiniToolCard tool={tool} href={hasRealTools ? undefined : "/marketplace"} />
+        {hasRealTools ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 reveal-group">
+            {tools.map((tool) => (
+              <div key={tool.id} className="reveal">
+                <MiniToolCard tool={tool} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div
+            className="reveal rounded-[28px] border px-6 py-8"
+            style={{ borderColor: "var(--border)", background: "var(--card)" }}
+          >
+            <p className="text-sm font-mono uppercase tracking-widest mb-3" style={{ color: "var(--faint)" }}>Featured tools</p>
+            <h3 className="text-2xl font-bold mb-3" style={{ fontFamily: "var(--font-display)", color: "var(--text)" }}>The marketplace is warming up.</h3>
+            <p className="text-sm leading-7 max-w-2xl" style={{ color: "var(--muted)" }}>
+              {unavailable
+                ? "We could not load featured tools right now. The live marketplace is still available, and we’ll retry automatically on the next refresh."
+                : "We do not have featured tools selected yet. Browse the marketplace to see the current live listings or publish the next one yourself."}
+            </p>
+            <div className="flex flex-wrap gap-3 mt-6">
+              <Link href="/marketplace" className="hero-btn-primary">Browse marketplace</Link>
+              <Link href="/dashboard/tools/new" className="hero-btn-secondary">List a tool</Link>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -644,16 +603,16 @@ function LandingDemo() {
             className="text-xs font-mono uppercase tracking-widest mb-3"
             style={{ color: "var(--blue)" }}
           >
-            Live demo
+            Product preview
           </p>
           <h2
             className="text-3xl sm:text-4xl font-bold mb-3"
             style={{ fontFamily: "var(--font-display)", color: "var(--text)" }}
           >
-            See it for yourself
+            See the workflow
           </h2>
           <p className="text-base" style={{ color: "var(--muted)" }}>
-            Sentiment analysis — type anything, get a real response.
+            This is a styled preview of the experience. For live requests, jump into any real tool page and run its demo there.
           </p>
         </div>
 
@@ -675,7 +634,7 @@ function LandingDemo() {
               className="text-xs font-mono"
               style={{ color: "var(--faint)" }}
             >
-              POST /api/v1/tools/sentiment-ai
+              Previewing a real tool call
             </span>
             <span
               className="text-xs font-mono px-2 py-0.5 rounded"
@@ -1171,7 +1130,7 @@ function SiteFooter() {
 // Root component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function LandingPage({ featuredTools }: { featuredTools: Tool[] }) {
+export default function LandingPage({ featuredTools, featuredToolsUnavailable = false }: { featuredTools: Tool[]; featuredToolsUnavailable?: boolean }) {
   useScrollReveal();
 
   return (
@@ -1179,7 +1138,7 @@ export default function LandingPage({ featuredTools }: { featuredTools: Tool[] }
       <HeroSection />
       <TickerBand />
       <HowItWorks />
-      <FeaturedTools tools={featuredTools} />
+      <FeaturedTools tools={featuredTools} unavailable={featuredToolsUnavailable} />
       <LandingDemo />
       <StatsSection />
       <SellerCTA />

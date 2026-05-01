@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 
 export default async function Home() {
   let featuredTools: Tool[] = [];
+  let featuredToolsUnavailable = false;
 
   try {
     const data = await api.get<ToolListResponse>(
@@ -19,8 +20,8 @@ export default async function Home() {
     );
     featuredTools = data.items;
   } catch {
-    // Fallthrough — LandingPage renders placeholder cards
+    featuredToolsUnavailable = true;
   }
 
-  return <LandingPage featuredTools={featuredTools} />;
+  return <LandingPage featuredTools={featuredTools} featuredToolsUnavailable={featuredToolsUnavailable} />;
 }

@@ -1,5 +1,9 @@
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/v1";
+const DEFAULT_API_BASE =
+  process.env.NODE_ENV === "production"
+    ? "https://start-3lbd.onrender.com/v1"
+    : "http://localhost:8000/v1";
+
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_BASE;
 
 export function getGatewayBaseUrl(): string {
   if (API_BASE.endsWith("/v1")) {

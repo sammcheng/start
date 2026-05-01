@@ -4,8 +4,10 @@ import logging
 import re
 import shutil
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any
 from uuid import UUID
 
@@ -152,6 +154,10 @@ class ContainerBuilder:
         raise ContainerBuildError(f"Unsupported language '{analysis.language}'.")
 
     async def build_and_push(self, tool_id: UUID, source_path: str, dockerfile: str) -> str:
+        self._ensure_command_available(
+            "docker",
+            "Automated container builds are not available on this host yet. Re-run uploads on a Docker-capable runtime.",
+        )
         dockerfile_path = Path(source_path) / "Dockerfile"
         dockerfile_path.write_text(dockerfile, encoding="utf-8")
 
@@ -274,12 +280,21 @@ class ContainerBuilder:
             return self._normalize_source_root(worktree)
 
         if tool.github_url:
-            await self._clone_repo(tool.github_url, worktree)
+            await self._fetch_github_source(tool.github_url, worktree)
             return worktree
 
         raise ContainerBuildError("No uploaded source was found for this tool.")
 
+    async def _fetch_github_source(self, github_url: str, destination: Path) -> None:
+        if await self._try_download_github_archive(github_url, destination):
+            return
+        await self._clone_repo(github_url, destination)
+
     async def _clone_repo(self, github_url: str, destination: Path) -> None:
+        self._ensure_command_available(
+            "git",
+            "Git is not available on this host, so GitHub imports cannot be cloned right now.",
+        )
         process = await asyncio.create_subprocess_exec(
             "git",
             "clone",
@@ -293,6 +308,60 @@ class ContainerBuilder:
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             raise ContainerBuildError(self._clean_process_error("Failed to clone GitHub repository", stdout, stderr))
+
+    async def _try_download_github_archive(self, github_url: str, destination: Path) -> bool:
+        parsed = urlparse(github_url)
+        if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+            return False
+
+        parts = [part for part in parsed.path.strip("/").split("/") if part]
+        if len(parts) < 2:
+            return False
+
+        owner, repo = parts[0], parts[1].removesuffix(".git")
+        branch = await self._github_default_branch(owner, repo)
+        archive_url = f"https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{branch}"
+
+        archive_path = destination.parent / "github-source.zip"
+        destination.mkdir(parents=True, exist_ok=True)
+
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                response = await client.get(archive_url)
+                response.raise_for_status()
+                archive_path.write_bytes(response.content)
+
+            def _extract() -> None:
+                with zipfile.ZipFile(archive_path) as archive:
+                    archive.extractall(destination)
+
+            await asyncio.to_thread(_extract)
+            normalized = self._normalize_source_root(destination)
+            if normalized != destination:
+                for child in list(destination.iterdir()):
+                    if child == normalized:
+                        continue
+                    if child.is_dir():
+                        shutil.rmtree(child, ignore_errors=True)
+                    else:
+                        child.unlink(missing_ok=True)
+                for child in normalized.iterdir():
+                    shutil.move(str(child), destination / child.name)
+                shutil.rmtree(normalized, ignore_errors=True)
+            return True
+        except (httpx.HTTPError, OSError, zipfile.BadZipFile):
+            return False
+
+    async def _github_default_branch(self, owner: str, repo: str) -> str:
+        api_url = f"https://api.github.com/repos/{owner}/{repo}"
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(api_url, headers={"Accept": "application/vnd.github+json"})
+            response.raise_for_status()
+            payload = response.json()
+        branch = payload.get("default_branch")
+        if not isinstance(branch, str) or not branch:
+            raise ContainerBuildError("We couldn't determine the repository's default branch.")
+        return branch
 
     async def _remove_existing_container(self, container_name: str) -> None:
         process = await asyncio.create_subprocess_exec(
@@ -483,6 +552,11 @@ class ContainerBuilder:
             return int(api_endpoint.rsplit(":", 1)[1])
         except (IndexError, ValueError):
             return None
+
+    def _ensure_command_available(self, command: str, message: str) -> None:
+        if shutil.which(command):
+            return
+        raise ContainerBuildError(message)
 
 
 async def process_tool_upload(tool_id: UUID) -> None:

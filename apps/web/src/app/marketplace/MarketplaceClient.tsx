@@ -309,12 +309,14 @@ function Pagination({
 
 export default function MarketplaceClient({
   initialData,
+  initialFetchFailed = false,
 }: {
   initialData: ToolListResponse | null;
+  initialFetchFailed?: boolean;
 }) {
   const [data, setData] = useState<ToolListResponse | null>(initialData);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(initialData === null);
+  const [error, setError] = useState<string | null>(initialFetchFailed ? "We couldn't load live tools on the first try. Retrying now..." : null);
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<ToolCategory | "all">("all");
@@ -353,6 +355,10 @@ export default function MarketplaceClient({
     },
     []
   );
+
+  const retryCurrentQuery = useCallback(() => {
+    void fetchTools(search, category, sortBy, page);
+  }, [fetchTools, search, category, sortBy, page]);
 
   // Debounced search
   useEffect(() => {
@@ -523,9 +529,16 @@ export default function MarketplaceClient({
               borderColor: "rgba(239,68,68,0.2)",
             }}
           >
-            <p className="text-sm" style={{ color: "var(--red)" }}>
+            <p className="text-sm mb-4" style={{ color: "var(--red)" }}>
               {error}
             </p>
+            <button
+              onClick={retryCurrentQuery}
+              className="text-xs underline transition-colors"
+              style={{ color: "var(--text)" }}
+            >
+              Retry
+            </button>
           </div>
         )}
 

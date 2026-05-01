@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 
 export default async function MarketplacePage() {
   let initialData: ToolListResponse | null = null;
+  let initialFetchFailed = false;
 
   try {
     initialData = await api.get<ToolListResponse>(
@@ -18,8 +19,8 @@ export default async function MarketplacePage() {
       { next: { revalidate: 60 } }
     );
   } catch {
-    // Client component handles the empty / error state
+    initialFetchFailed = true;
   }
 
-  return <MarketplaceClient initialData={initialData} />;
+  return <MarketplaceClient initialData={initialData} initialFetchFailed={initialFetchFailed} />;
 }

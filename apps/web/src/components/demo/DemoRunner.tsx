@@ -14,9 +14,10 @@ import ImageOutput from "./ImageOutput";
 import TableOutput from "./TableOutput";
 import TextOutput from "./TextOutput";
 import type { DemoInputSchema, DemoRunnerProps, DemoSchemaField, DemoResult } from "./types";
-import { getGatewayBaseUrl } from "@/lib/api";
+import { API_BASE, getGatewayBaseUrl } from "@/lib/api";
 
 const GATEWAY_BASE = getGatewayBaseUrl();
+const DEMO_BASE = API_BASE;
 const DEMO_API_KEY = process.env.NEXT_PUBLIC_DEMO_API_KEY ?? "";
 const SESSION_LIMIT = 10;
 const STORAGE_KEY = "hackmarket-demo-calls";
@@ -77,10 +78,6 @@ export default function DemoRunner({
       setError("You’ve used the 10 free demo calls for this session. Sign up to keep testing tools.");
       return;
     }
-    if (!DEMO_API_KEY) {
-      setError("Demo access is not configured yet. Add NEXT_PUBLIC_DEMO_API_KEY to enable guest runs.");
-      return;
-    }
     if (validationError) {
       setError(validationError);
       return;
@@ -103,14 +100,19 @@ export default function DemoRunner({
         dynamicFields,
       });
 
-      // Demo traffic should always go through the buyer gateway so auth, rate limits,
-      // usage logging, and billing behavior match production API calls.
-      const response = await fetch(`${GATEWAY_BASE}/tools/${toolSlug}`, {
+      const demoEndpoint = DEMO_API_KEY
+        ? `${GATEWAY_BASE}/tools/${toolSlug}`
+        : `${DEMO_BASE}/tools/${toolSlug}/demo`;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (DEMO_API_KEY) {
+        headers["X-API-Key"] = DEMO_API_KEY;
+      }
+
+      const response = await fetch(demoEndpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": DEMO_API_KEY,
-        },
+        headers,
         body: JSON.stringify(payload),
       });
 
@@ -150,7 +152,7 @@ export default function DemoRunner({
           <div className="text-xs uppercase tracking-[0.25em] text-cyan-300/70">Interactive Demo</div>
           <h2 className="mt-2 text-2xl font-semibold text-stone-100">Try the live tool through the gateway</h2>
           <p className="mt-2 text-sm leading-6 text-stone-400">
-            Demo runs use a guest key and count against a 10-call session limit.
+            Demo runs are rate limited and count against a 10-call session limit in this browser.
           </p>
         </div>
         <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-100">

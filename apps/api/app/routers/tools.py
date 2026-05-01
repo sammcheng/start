@@ -1,26 +1,25 @@
 import math
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import httpx
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_user, get_db, get_redis, require_seller
-from app.exceptions import AppError, Forbidden, ToolNotFoundError
+from app.exceptions import AppError, Forbidden, RateLimitExceededError, ToolNotFoundError, ToolNotLiveError
 from app.models.tool import ToolStatus
 from app.models.user import User
-from app.schemas.tool import (
-    ToolCreate,
-    ToolFilters,
-    ToolListResponse,
-    ToolResponse,
-    ToolUpdate,
-)
 from app.schemas.docs import ToolDocumentation
-from app.services import docs_service, tool_service
+from app.schemas.tool import ToolCreate, ToolFilters, ToolListResponse, ToolResponse, ToolUpdate
+from app.services import docs_service, proxy_service, tool_service
 
 router = APIRouter(prefix="/tools", tags=["tools"])
+
+DEMO_RATE_LIMIT = 10
+DEMO_RATE_LIMIT_WINDOW_SECONDS = 60 * 60
 
 
 # ---------------------------------------------------------------------------
@@ -44,6 +43,23 @@ def _parse_filters(
         is_featured=is_featured,
         sort_by=sort_by,  # type: ignore[arg-type]
     )
+
+
+def _demo_client_identifier(request: Request) -> str:
+    forwarded_for = request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "anonymous"
+
+
+async def _check_demo_rate_limit(redis: Redis, request: Request, slug: str) -> tuple[int, int]:
+    key = f"demo-ratelimit:{slug}:{_demo_client_identifier(request)}"
+    current = await redis.incr(key)
+    if current == 1:
+        await redis.expire(key, DEMO_RATE_LIMIT_WINDOW_SECONDS)
+    if current > DEMO_RATE_LIMIT:
+        raise RateLimitExceededError(DEMO_RATE_LIMIT, 0)
+    return DEMO_RATE_LIMIT, DEMO_RATE_LIMIT - current
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +142,75 @@ async def list_tools(
         page=page,
         limit=limit,
         pages=math.ceil(total / limit) if total else 0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /tools/{slug}/demo
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{slug}/demo",
+    summary="Run a public demo request for a live tool",
+)
+async def run_tool_demo(
+    slug: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+) -> Response:
+    tool = await tool_service.get_tool_by_slug(db, slug)
+    if not tool:
+        raise ToolNotFoundError(slug)
+    if tool.status != ToolStatus.live or not tool.api_endpoint:
+        raise ToolNotLiveError(slug)
+
+    limit, remaining = await _check_demo_rate_limit(redis, request, slug)
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    request_body = await request.body()
+    started_at = datetime.now(timezone.utc)
+
+    upstream_status_code = status.HTTP_502_BAD_GATEWAY
+    upstream_content = b""
+    upstream_headers: dict[str, str] = {}
+    upstream_media_type = "application/json"
+
+    try:
+        upstream_response = await proxy_service.forward_request(
+            api_endpoint=tool.api_endpoint,
+            request=request,
+            request_body=request_body,
+            request_id=request_id,
+            tool_slug=tool.slug,
+        )
+        upstream_status_code = upstream_response.status_code
+        upstream_content = upstream_response.content
+        upstream_headers = proxy_service.filter_response_headers(upstream_response.headers)
+        upstream_media_type = upstream_response.headers.get("content-type", "application/json")
+    except httpx.HTTPError:
+        upstream_content = b'{"error":{"code":"TOOL_UNAVAILABLE","message":"The tool demo could not be reached right now."}}'
+        upstream_headers = {"content-type": "application/json"}
+    except Exception:
+        upstream_content = b'{"error":{"code":"TOOL_REQUEST_FAILED","message":"The demo request failed before completion."}}'
+        upstream_headers = {"content-type": "application/json"}
+
+    response_time_ms = max(int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000), 1)
+    await tool_service.increment_total_requests(redis, tool.id)
+
+    upstream_headers.update(
+        {
+            "X-HackMarket-Request-Id": request_id,
+            "X-HackMarket-Response-Time-Ms": str(response_time_ms),
+            "X-Demo-RateLimit-Remaining": str(remaining),
+            "X-Demo-RateLimit-Limit": str(limit),
+        }
+    )
+    return Response(
+        content=upstream_content,
+        status_code=upstream_status_code,
+        media_type=upstream_media_type,
+        headers=upstream_headers,
     )
 
 

@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from urllib.parse import urlsplit, urlunsplit
 from typing import Annotated
 
 import httpx
@@ -14,22 +13,10 @@ from app.exceptions import RateLimitExceededError, ToolNotFoundError, ToolNotLiv
 from app.models import APIKey, Tool, User
 from app.models.tool import ToolStatus
 from app.schemas.usage import UsageLogCreate
-from app.services import tool_service, usage_service
+from app.services import proxy_service, tool_service, usage_service
 
 RATE_LIMIT_PER_MINUTE = 100
 RATE_LIMIT_WINDOW_SECONDS = 60
-HOP_BY_HOP_HEADERS = {
-    "connection",
-    "content-length",
-    "host",
-    "keep-alive",
-    "proxy-authenticate",
-    "proxy-authorization",
-    "te",
-    "trailer",
-    "transfer-encoding",
-    "upgrade",
-}
 
 router = APIRouter(prefix="/api/v1/tools", tags=["gateway"])
 
@@ -98,7 +85,7 @@ async def _proxy_tool_request_impl(
         upstream_response = await _forward_request(tool, request, request_body, request_id, tool_path)
         upstream_status_code = upstream_response.status_code
         upstream_content = upstream_response.content
-        upstream_headers = _filter_response_headers(upstream_response.headers)
+        upstream_headers = proxy_service.filter_response_headers(upstream_response.headers)
         upstream_media_type = upstream_response.headers.get("content-type", "application/json")
     except httpx.HTTPError as exc:
         error_message = "The tool container could not be reached."
@@ -156,45 +143,14 @@ async def _check_rate_limit(redis: Redis, api_key_id: uuid.UUID) -> tuple[int, i
 
 
 async def _forward_request(tool: Tool, request: Request, request_body: bytes, request_id: str, tool_path: str = "") -> httpx.Response:
-    url = httpx.URL(_build_upstream_url(tool.api_endpoint, tool_path)).copy_with(query=request.url.query.encode("utf-8"))
-    headers = _filter_request_headers(request.headers)
-    headers["X-HackMarket-Request-Id"] = request_id
-    headers["X-HackMarket-Tool-Slug"] = tool.slug
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        return await client.request(
-            method=request.method,
-            url=url,
-            content=request_body,
-            headers=headers,
-        )
-
-
-def _build_upstream_url(api_endpoint: str, tool_path: str) -> str:
-    parsed = urlsplit(api_endpoint)
-    base_path = parsed.path.rstrip("/")
-    extra_path = f"/{tool_path.lstrip('/')}" if tool_path else ""
-    combined_path = f"{base_path}{extra_path}" or "/"
-    return urlunsplit((parsed.scheme, parsed.netloc, combined_path, "", ""))
-
-
-def _filter_request_headers(headers) -> dict[str, str]:
-    filtered: dict[str, str] = {}
-    for key, value in headers.items():
-        lower = key.lower()
-        if lower in HOP_BY_HOP_HEADERS or lower == "x-api-key":
-            continue
-        filtered[key] = value
-    return filtered
-
-
-def _filter_response_headers(headers) -> dict[str, str]:
-    filtered: dict[str, str] = {}
-    for key, value in headers.items():
-        if key.lower() in HOP_BY_HOP_HEADERS:
-            continue
-        filtered[key] = value
-    return filtered
+    return await proxy_service.forward_request(
+        api_endpoint=tool.api_endpoint,
+        request=request,
+        request_body=request_body,
+        request_id=request_id,
+        tool_slug=tool.slug,
+        tool_path=tool_path,
+    )
 
 
 def _calculate_request_cost(tool: Tool, status_code: int) -> Decimal:

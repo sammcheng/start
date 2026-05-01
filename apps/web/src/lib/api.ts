@@ -4,6 +4,7 @@ const DEFAULT_API_BASE =
     : "http://localhost:8000/v1";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_BASE;
+const DEFAULT_TIMEOUT_MS = 20_000;
 
 export function getGatewayBaseUrl(): string {
   if (API_BASE.endsWith("/v1")) {
@@ -11,10 +12,6 @@ export function getGatewayBaseUrl(): string {
   }
   return `${API_BASE}/api/v1`;
 }
-
-// ---------------------------------------------------------------------------
-// Error type
-// ---------------------------------------------------------------------------
 
 export class ApiError extends Error {
   constructor(
@@ -29,21 +26,69 @@ export class ApiError extends Error {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Request options
-// ---------------------------------------------------------------------------
-
 export interface RequestOptions {
-  /** Clerk JWT — pass from auth().getToken() or useAuth().getToken() */
   token?: string | null;
   cache?: RequestCache;
-  /** Next.js fetch extensions */
   next?: { revalidate?: number | false; tags?: string[] };
+  timeoutMs?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Core request
-// ---------------------------------------------------------------------------
+type ErrorPayload = {
+  error?: {
+    code?: string;
+    message?: string;
+    details?: Record<string, unknown>;
+    request_id?: string | null;
+  };
+};
+
+async function parseResponseBody(res: Response): Promise<unknown> {
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return res.json();
+  }
+
+  const text = await res.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text.slice(0, 500) };
+  }
+}
+
+function toApiError(res: Response, data: unknown): ApiError {
+  const err = (data as ErrorPayload | null)?.error;
+  const rawText =
+    data && typeof data === "object" && "raw" in (data as Record<string, unknown>)
+      ? String((data as Record<string, unknown>).raw)
+      : null;
+
+  return new ApiError(
+    res.status,
+    err?.code ?? (res.status >= 500 ? "UPSTREAM_ERROR" : "UNKNOWN_ERROR"),
+    err?.message ?? rawText ?? "Request failed",
+    err?.details ?? {},
+    err?.request_id ?? res.headers.get("X-HackMarket-Request-Id")
+  );
+}
+
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(504, "REQUEST_TIMEOUT", "The request took too long to complete.");
+    }
+    throw new ApiError(0, "NETWORK_ERROR", "We could not reach the server. Please try again.");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 async function request<T>(
   method: string,
@@ -61,33 +106,23 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${options.token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    cache: options.cache,
-    next: options.next,
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE}${path}`,
+    {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: options.cache,
+      next: options.next,
+    },
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  );
 
-  // No-content responses
   if (res.status === 204) return undefined as T;
 
-  let data: unknown;
-  try {
-    data = await res.json();
-  } catch {
-    throw new ApiError(res.status, "PARSE_ERROR", "Failed to parse response");
-  }
-
+  const data = await parseResponseBody(res);
   if (!res.ok) {
-    const err = (data as { error?: { code: string; message: string; details?: Record<string, unknown>; request_id?: string | null } })?.error;
-    throw new ApiError(
-      res.status,
-      err?.code ?? "UNKNOWN_ERROR",
-      err?.message ?? "Request failed",
-      err?.details ?? {},
-      err?.request_id ?? null
-    );
+    throw toApiError(res, data);
   }
 
   return data as T;
@@ -105,40 +140,27 @@ async function requestFormData<T>(
     headers["Authorization"] = `Bearer ${options.token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body,
-    cache: options.cache,
-    next: options.next,
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE}${path}`,
+    {
+      method,
+      headers,
+      body,
+      cache: options.cache,
+      next: options.next,
+    },
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  );
 
   if (res.status === 204) return undefined as T;
 
-  let data: unknown;
-  try {
-    data = await res.json();
-  } catch {
-    throw new ApiError(res.status, "PARSE_ERROR", "Failed to parse response");
-  }
-
+  const data = await parseResponseBody(res);
   if (!res.ok) {
-    const err = (data as { error?: { code: string; message: string; details?: Record<string, unknown>; request_id?: string | null } })?.error;
-    throw new ApiError(
-      res.status,
-      err?.code ?? "UNKNOWN_ERROR",
-      err?.message ?? "Request failed",
-      err?.details ?? {},
-      err?.request_id ?? null
-    );
+    throw toApiError(res, data);
   }
 
   return data as T;
 }
-
-// ---------------------------------------------------------------------------
-// API client
-// ---------------------------------------------------------------------------
 
 export const api = {
   get<T>(path: string, options?: RequestOptions): Promise<T> {
@@ -157,10 +179,6 @@ export const api = {
     return request<T>("DELETE", path, undefined, options);
   },
 };
-
-// ---------------------------------------------------------------------------
-// Query string builder
-// ---------------------------------------------------------------------------
 
 export function buildQuery(params: Record<string, unknown>): string {
   const qs = new URLSearchParams();

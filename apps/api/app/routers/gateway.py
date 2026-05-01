@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
+from urllib.parse import urlsplit, urlunsplit
 from typing import Annotated
 
 import httpx
@@ -35,16 +36,45 @@ router = APIRouter(prefix="/api/v1/tools", tags=["gateway"])
 
 @router.api_route(
     "/{tool_slug}",
-    methods=["GET", "POST", "PUT", "DELETE"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     summary="Proxy buyer requests to seller tools",
 )
-async def proxy_tool_request(
+async def proxy_tool_request_root(
     tool_slug: str,
     request: Request,
     background_tasks: BackgroundTasks,
     auth_context: Annotated[tuple[User, APIKey], Depends(validate_api_key)],
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
+) -> Response:
+    return await _proxy_tool_request_impl(tool_slug, "", request, background_tasks, auth_context, db, redis)
+
+
+@router.api_route(
+    "/{tool_slug}/{tool_path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+    summary="Proxy buyer requests to seller tools",
+)
+async def proxy_tool_request_with_path(
+    tool_slug: str,
+    tool_path: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    auth_context: Annotated[tuple[User, APIKey], Depends(validate_api_key)],
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+) -> Response:
+    return await _proxy_tool_request_impl(tool_slug, tool_path, request, background_tasks, auth_context, db, redis)
+
+
+async def _proxy_tool_request_impl(
+    tool_slug: str,
+    tool_path: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    auth_context: tuple[User, APIKey],
+    db: AsyncSession,
+    redis: Redis,
 ) -> Response:
     buyer, api_key = auth_context
     tool = await tool_service.get_tool_by_slug(db, tool_slug)
@@ -65,7 +95,7 @@ async def proxy_tool_request(
     error_message: str | None = None
 
     try:
-        upstream_response = await _forward_request(tool, request, request_body, request_id)
+        upstream_response = await _forward_request(tool, request, request_body, request_id, tool_path)
         upstream_status_code = upstream_response.status_code
         upstream_content = upstream_response.content
         upstream_headers = _filter_response_headers(upstream_response.headers)
@@ -125,8 +155,8 @@ async def _check_rate_limit(redis: Redis, api_key_id: uuid.UUID) -> tuple[int, i
     return RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_MINUTE - current
 
 
-async def _forward_request(tool: Tool, request: Request, request_body: bytes, request_id: str) -> httpx.Response:
-    url = httpx.URL(tool.api_endpoint).copy_with(query=request.url.query.encode("utf-8"))
+async def _forward_request(tool: Tool, request: Request, request_body: bytes, request_id: str, tool_path: str = "") -> httpx.Response:
+    url = httpx.URL(_build_upstream_url(tool.api_endpoint, tool_path)).copy_with(query=request.url.query.encode("utf-8"))
     headers = _filter_request_headers(request.headers)
     headers["X-HackMarket-Request-Id"] = request_id
     headers["X-HackMarket-Tool-Slug"] = tool.slug
@@ -138,6 +168,14 @@ async def _forward_request(tool: Tool, request: Request, request_body: bytes, re
             content=request_body,
             headers=headers,
         )
+
+
+def _build_upstream_url(api_endpoint: str, tool_path: str) -> str:
+    parsed = urlsplit(api_endpoint)
+    base_path = parsed.path.rstrip("/")
+    extra_path = f"/{tool_path.lstrip('/')}" if tool_path else ""
+    combined_path = f"{base_path}{extra_path}" or "/"
+    return urlunsplit((parsed.scheme, parsed.netloc, combined_path, "", ""))
 
 
 def _filter_request_headers(headers) -> dict[str, str]:

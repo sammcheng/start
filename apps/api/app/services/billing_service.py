@@ -65,8 +65,8 @@ async def create_stripe_connect_account(db: AsyncSession, user: User) -> str:
     account_link = await _call_stripe(
         stripe.AccountLink.create,
         account=user.stripe_connect_id,
-        refresh_url="http://localhost:3000/dashboard/billing?refresh=1",
-        return_url="http://localhost:3000/dashboard/billing?connected=1",
+        refresh_url=f"{settings.app_base_url.rstrip('/')}/dashboard/billing?refresh=1",
+        return_url=f"{settings.app_base_url.rstrip('/')}/dashboard/billing?connected=1",
         type="account_onboarding",
     )
     return account_link["url"]

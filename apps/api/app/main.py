@@ -4,6 +4,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy import text as sql_text
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 
@@ -27,7 +28,6 @@ logger = logging.getLogger(__name__)
 for handler in logging.getLogger().handlers:
     handler.addFilter(RequestIdFilter())
 
-PRODUCTION_ORIGIN = "https://hackmarket.io"
 
 
 @asynccontextmanager
@@ -59,8 +59,8 @@ app = FastAPI(
 # CORS
 # ---------------------------------------------------------------------------
 cors_origins = list(settings.cors_origins)
-if settings.environment == "production":
-    cors_origins.append(PRODUCTION_ORIGIN)
+if settings.app_base_url and settings.app_base_url not in cors_origins:
+    cors_origins.append(settings.app_base_url)
 
 app.add_middleware(
     CORSMiddleware,
@@ -115,3 +115,13 @@ app.include_router(gateway.router)
 @app.get("/health", tags=["system"])
 async def health():
     return {"status": "ok", "environment": settings.environment}
+
+
+@app.get("/ready", tags=["system"])
+async def ready():
+    from app.dependencies import AsyncSessionLocal, _redis_client
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(sql_text("select 1"))
+    await _redis_client.ping()
+    return {"status": "ready", "environment": settings.environment}

@@ -17,7 +17,7 @@ def test_valid_api_key_forwards_request(client, auth_overrides, buyer, api_key, 
         assert slug == live_tool.slug
         return live_tool
 
-    async def fake_forward_request(tool, request, body, request_id):
+    async def fake_forward_request(tool, request, body, request_id, tool_path=""):
         return httpx.Response(200, json={"ok": True}, headers={"content-type": "application/json"})
 
     async def noop(*args, **kwargs):
@@ -83,7 +83,7 @@ def test_usage_logged(client, auth_overrides, buyer, api_key, live_tool, monkeyp
     async def fake_get_tool_by_slug(db, slug):
         return live_tool
 
-    async def fake_forward_request(tool, request, body, request_id):
+    async def fake_forward_request(tool, request, body, request_id, tool_path=""):
         return httpx.Response(200, json={"result": "ok"}, headers={"content-type": "application/json"})
 
     async def fake_create_usage_log(entry):
@@ -134,13 +134,43 @@ def test_tool_not_live(client, auth_overrides, buyer, api_key, draft_tool, monke
     assert response.json()["error"]["code"] == "tool_not_live"
 
 
+def test_gateway_forwards_subpaths(client, auth_overrides, buyer, api_key, live_tool, monkeypatch):
+    auth_overrides(api_key_context=(buyer, api_key))
+    captured = {}
+
+    async def fake_get_tool_by_slug(db, slug):
+        return live_tool
+
+    async def fake_forward_request(tool, request, body, request_id, tool_path=""):
+        captured["tool_path"] = tool_path
+        return httpx.Response(200, json={"ok": True}, headers={"content-type": "application/json"})
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(tool_service, "get_tool_by_slug", fake_get_tool_by_slug)
+    monkeypatch.setattr(gateway, "_forward_request", fake_forward_request)
+    monkeypatch.setattr(tool_service, "increment_total_requests", noop)
+    monkeypatch.setattr(tool_service, "flush_total_requests_if_needed", noop)
+    monkeypatch.setattr(usage_service, "create_usage_log", noop)
+
+    response = client.post(
+        f"/api/v1/tools/{live_tool.slug}/api/analyze",
+        headers={"X-API-Key": "hm_live_test"},
+        json={"text": "hello"},
+    )
+
+    assert response.status_code == 200
+    assert captured["tool_path"] == "api/analyze"
+
+
 def test_response_time_recorded(client, auth_overrides, buyer, api_key, live_tool, monkeypatch):
     auth_overrides(api_key_context=(buyer, api_key))
 
     async def fake_get_tool_by_slug(db, slug):
         return live_tool
 
-    async def fake_forward_request(tool, request, body, request_id):
+    async def fake_forward_request(tool, request, body, request_id, tool_path=""):
         return httpx.Response(200, json={"result": "ok"}, headers={"content-type": "application/json"})
 
     async def noop(*args, **kwargs):

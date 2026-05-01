@@ -1,15 +1,15 @@
 import json
 from typing import Any
 
+from app.config import settings
 from app.models.tool import InputType, OutputType, Tool
 from app.schemas.docs import DocumentationCodeExample, DocumentationSection, ToolDocumentation
 
 DEFAULT_RATE_LIMIT_PER_MINUTE = 100
-PUBLIC_API_BASE = "https://api.hackmarket.io"
 
 
 def generate_tool_docs(tool: Tool) -> ToolDocumentation:
-    endpoint_url = f"{PUBLIC_API_BASE}/api/v1/tools/{tool.slug}"
+    endpoint_url = f"{settings.public_api_base_url.rstrip('/')}/api/v1/tools/{tool.slug}"
     method = "POST"
     request_example = _build_request_example(tool)
     response_example = _build_response_example(tool)

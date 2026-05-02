@@ -45,6 +45,7 @@ python3 scripts/render_blueprint_report.py
 
 - Root Directory: `apps/seller-tools/home-accessibility-checker`
 - Runtime: `node`
+- Node Version: `22.16.0` (pinned via `.node-version` and `package.json`)
 - Build Command: `npm ci`
 - Start Command: `npm start`
 - Health Check Path: `/health`

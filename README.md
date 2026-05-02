@@ -165,7 +165,7 @@ Render monorepo note:
 Recommended hosted env values:
 - Vercel `NEXT_PUBLIC_API_URL=https://api.hackmarket.io/v1`
 - Vercel `NEXT_PUBLIC_APP_URL=https://hackmarket.io`
-- Render custom domain `api.hackmarket.io` pointed at `hackmarket-api`
+- Render custom domain `api.hackmarket.io` pointed at the `start` service
 
 **CI/CD**
 

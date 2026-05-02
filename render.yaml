@@ -4,7 +4,8 @@ services:
     runtime: docker
     plan: free
     region: oregon
-    dockerfilePath: ./Dockerfile
+    rootDir: apps/api
+    dockerfilePath: ./Dockerfile.prod
     dockerContext: .
     healthCheckPath: /health
     autoDeployTrigger: checksPass
@@ -42,6 +43,28 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+
+  - type: web
+    name: home-accessibility-checker
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: apps/seller-tools/home-accessibility-checker
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LOG_LEVEL
+        value: info
+      - key: OPENROUTER_TIMEOUT_MS
+        value: "20000"
 
   - type: keyvalue
     name: hackmarket-redis

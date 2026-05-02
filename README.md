@@ -154,7 +154,12 @@ Notes:
 
 Hosted deployment split:
 - Vercel: deploy `apps/web` as the Next.js frontend
-- Render: deploy `apps/api` with `render.yaml`, plus managed Postgres and Key Value
+- Render: deploy `apps/api` and `apps/seller-tools/home-accessibility-checker` with `render.yaml`, plus managed Postgres and Key Value
+
+Render monorepo note:
+- `render.yaml` is configured to isolate the backend with `rootDir: apps/api`
+- `render.yaml` is configured to isolate the seller tool with `rootDir: apps/seller-tools/home-accessibility-checker`
+- if an existing Render service was originally created from the dashboard, update that service to match the Blueprint settings or re-create it from the Blueprint so unrelated repo pushes stop redeploying both services
 
 Recommended hosted env values:
 - Vercel `NEXT_PUBLIC_API_URL=https://api.hackmarket.io/v1`

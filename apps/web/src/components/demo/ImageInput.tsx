@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import type { DemoImageValue, DemoInputProps } from "./types";
 
@@ -14,9 +14,16 @@ export default function ImageInput({
   error,
 }: DemoInputProps<ImageValue>) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   async function handleFile(file: File) {
+    if (file.size > 10 * 1024 * 1024) {
+      setLocalError("Images must be 10MB or smaller.");
+      return;
+    }
+
     const dataUrl = await readAsDataUrl(file);
+    setLocalError(null);
     onChange({
       base64: dataUrl.split(",")[1] ?? "",
       previewUrl: dataUrl,
@@ -69,8 +76,8 @@ export default function ImageInput({
           }
         }}
       />
-      {error ? <p className="text-sm text-red-300">{error}</p> : null}
-      {!error && !value ? <p className="text-sm text-stone-500">No image selected yet.</p> : null}
+      {error || localError ? <p className="text-sm text-red-300">{error ?? localError}</p> : null}
+      {!error && !localError && !value ? <p className="text-sm text-stone-500">No image selected yet.</p> : null}
     </div>
   );
 }

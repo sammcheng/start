@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import type { DemoImageValue, DemoInputProps } from "./types";
 
@@ -14,9 +14,24 @@ export default function ImageArrayInput({
   error,
 }: DemoInputProps<ImageArrayValue>) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   async function handleFiles(files: FileList | File[]) {
-    const nextImages = await Promise.all(Array.from(files).map(readImageFile));
+    const selectedFiles = Array.from(files);
+
+    if (selectedFiles.length > 5) {
+      setLocalError("Upload up to 5 images at a time.");
+      return;
+    }
+
+    const oversizedFile = selectedFiles.find((file) => file.size > 10 * 1024 * 1024);
+    if (oversizedFile) {
+      setLocalError(`"${oversizedFile.name}" is larger than the 10MB upload limit.`);
+      return;
+    }
+
+    const nextImages = await Promise.all(selectedFiles.map(readImageFile));
+    setLocalError(null);
     onChange(nextImages);
   }
 
@@ -68,8 +83,8 @@ export default function ImageArrayInput({
           }
         }}
       />
-      {error ? <p className="text-sm text-red-300">{error}</p> : null}
-      {!error && !value.length ? <p className="text-sm text-stone-500">No images selected yet.</p> : null}
+      {error || localError ? <p className="text-sm text-red-300">{error ?? localError}</p> : null}
+      {!error && !localError && !value.length ? <p className="text-sm text-stone-500">No images selected yet.</p> : null}
     </div>
   );
 }

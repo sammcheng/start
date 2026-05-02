@@ -5,6 +5,9 @@ services:
     plan: free
     region: oregon
     rootDir: apps/api
+    buildFilter:
+      paths:
+        - apps/api/**
     dockerfilePath: ./Dockerfile.prod
     dockerContext: .
     healthCheckPath: /health
@@ -50,6 +53,9 @@ services:
     plan: free
     region: oregon
     rootDir: apps/seller-tools/home-accessibility-checker
+    buildFilter:
+      paths:
+        - apps/seller-tools/home-accessibility-checker/**
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -47,6 +48,51 @@ def filter_response_headers(headers) -> dict[str, str]:
             continue
         filtered[key] = value
     return filtered
+
+
+def normalize_platform_gateway_error(response: httpx.Response) -> tuple[int, bytes, dict[str, str], str] | None:
+    content_type = response.headers.get("content-type", "")
+    if "text/html" not in content_type.lower():
+        return None
+
+    body = response.text
+    normalized = body.lower()
+    if (
+        "bad gateway" not in normalized
+        and ">502<" not in normalized
+        and "service is currently unavailable" not in normalized
+    ):
+        return None
+
+    platform = None
+    if "powered by render" in normalized:
+        platform = "Render"
+    elif "powered by vercel" in normalized:
+        platform = "Vercel"
+
+    platform_request_id_match = re.search(r"Request ID:\s*([^\s<]+)", body, re.IGNORECASE)
+    platform_request_id = platform_request_id_match.group(1) if platform_request_id_match else None
+
+    message = "The tool service is temporarily unavailable. Please try again in a minute."
+    payload = {
+        "error": {
+            "code": "TOOL_UNAVAILABLE",
+            "message": message,
+        }
+    }
+    if platform:
+        payload["error"]["platform"] = platform
+    if platform_request_id:
+        payload["error"]["platform_request_id"] = platform_request_id
+
+    import json
+
+    return (
+        httpx.codes.BAD_GATEWAY,
+        json.dumps(payload).encode("utf-8"),
+        {"content-type": "application/json"},
+        "application/json",
+    )
 
 
 async def forward_request(

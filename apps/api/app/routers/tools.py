@@ -190,6 +190,9 @@ async def run_tool_demo(
         upstream_content = upstream_response.content
         upstream_headers = proxy_service.filter_response_headers(upstream_response.headers)
         upstream_media_type = upstream_response.headers.get("content-type", "application/json")
+        normalized_gateway_error = proxy_service.normalize_platform_gateway_error(upstream_response)
+        if normalized_gateway_error:
+            upstream_status_code, upstream_content, upstream_headers, upstream_media_type = normalized_gateway_error
     except httpx.TimeoutException:
         upstream_status_code = status.HTTP_504_GATEWAY_TIMEOUT
         upstream_content = b'{"error":{"code":"TOOL_TIMEOUT","message":"The tool demo took too long to respond."}}'

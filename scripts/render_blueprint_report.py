@@ -32,7 +32,7 @@ EXPECTED_WEB_SERVICES: dict[str, dict[str, Any]] = {
         "autoDeployTrigger": "checksPass",
         "healthCheckPath": "/health",
         "buildFilter": {"paths": ["apps/api/**"], "ignoredPaths": []},
-        "dockerfilePath": "./Dockerfile.prod",
+        "dockerfilePath": "./Dockerfile",
         "dockerContext": ".",
     },
     "home-accessibility-checker": {

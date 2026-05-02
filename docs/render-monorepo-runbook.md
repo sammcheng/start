@@ -44,7 +44,7 @@ tool Node version do not silently drift.
 
 - Root Directory: `apps/api`
 - Runtime: `docker`
-- Dockerfile Path: `./Dockerfile.prod`
+- Dockerfile Path: `./Dockerfile`
 - Docker Context: `.`
 - Health Check Path: `/health`
 - Auto Deploy Trigger: `checksPass`

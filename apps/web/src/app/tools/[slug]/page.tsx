@@ -72,6 +72,21 @@ function formatCount(n: number): string {
   return String(n);
 }
 
+function supportsListingUrlAndImages(schema: Record<string, unknown> | null) {
+  const fields = Array.isArray(schema?.fields) ? schema.fields : [];
+  const hasImages = fields.some((field) => {
+    if (!field || typeof field !== "object") return false;
+    const typedField = field as { name?: unknown; type?: unknown };
+    return typedField.name === "images" && typedField.type === "file";
+  });
+  const hasUrl = fields.some((field) => {
+    if (!field || typeof field !== "object") return false;
+    const typedField = field as { name?: unknown; type?: unknown };
+    return typedField.name === "url" && typedField.type === "url";
+  });
+  return hasImages && hasUrl;
+}
+
 // ── Schema viewer ──────────────────────────────────────────────────────────
 
 function SchemaBlock({ schema }: { schema: Record<string, unknown> }) {
@@ -129,6 +144,7 @@ export default async function ToolPage({
   const toolDocs = await fetchToolDocs(slug);
 
   const catColor = CAT_COLORS[tool.category] ?? "#6b7280";
+  const listingUrlAndImageTool = supportsListingUrlAndImages(tool.input_schema as Record<string, unknown> | null);
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
@@ -244,6 +260,20 @@ export default async function ToolPage({
               >
                 {tool.description}
               </div>
+              {listingUrlAndImageTool ? (
+                <div
+                  className="mt-5 rounded-2xl border px-4 py-4 text-sm leading-6"
+                  style={{
+                    background: "rgba(245, 158, 11, 0.08)",
+                    borderColor: "rgba(245, 158, 11, 0.2)",
+                    color: "var(--text)",
+                  }}
+                >
+                  This tool accepts either a property listing URL or direct photo uploads. Listing sites like Zillow
+                  can block automated scraping in production, so uploading photos is the most reliable path if a URL
+                  request is rejected.
+                </div>
+              ) : null}
             </section>
 
             {/* Input / Output Schema */}

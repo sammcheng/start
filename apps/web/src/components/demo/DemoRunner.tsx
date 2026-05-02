@@ -46,6 +46,7 @@ export default function DemoRunner({
   const dynamicFields = Array.isArray(schema.fields) ? schema.fields : [];
   const sessionRemaining = Math.max(SESSION_LIMIT - callsUsed, 0);
   const sessionLimited = sessionRemaining <= 0;
+  const supportsListingUrlAndImages = hasListingUrlAndImageInputs(dynamicFields);
 
   const validationError = useMemo(() => {
     if (dynamicFields.length) {
@@ -163,6 +164,12 @@ export default function DemoRunner({
       <div className="grid gap-6 lg:grid-cols-[1fr_0.95fr]">
         <div className="rounded-[28px] border border-stone-800 bg-black/20 p-5">
           <div className="mb-4 text-xs uppercase tracking-[0.2em] text-stone-400">Input</div>
+          {supportsListingUrlAndImages ? (
+            <div className="mb-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm leading-6 text-amber-100">
+              This tool accepts either a property listing URL or uploaded photos. Some listing sites block automated
+              scraping in production, so photo upload is the most reliable path when a URL request is rejected.
+            </div>
+          ) : null}
           {renderInput({
             inputType,
             schema,
@@ -201,7 +208,12 @@ export default function DemoRunner({
 
           {error ? (
             <div className="mt-4 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-100">
-              {error}
+              <div>{error}</div>
+              {supportsListingUrlAndImages && isListingSiteBlockedMessage(error) ? (
+                <div className="mt-2 text-red-100/80">
+                  Recovery path: switch to the image input and upload listing photos directly.
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -428,6 +440,17 @@ function validateDynamicFields(fields: DemoSchemaField[], value: Record<string, 
     }
   }
   return null;
+}
+
+function hasListingUrlAndImageInputs(fields: DemoSchemaField[]) {
+  const hasImages = fields.some((field) => field.name === "images" && field.type === "file");
+  const hasUrl = fields.some((field) => field.name === "url" && field.type === "url");
+  return hasImages && hasUrl;
+}
+
+function isListingSiteBlockedMessage(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("blocked automated access") || normalized.includes("uploading photos directly instead");
 }
 
 function extractErrorMessage(data: unknown, status: number) {

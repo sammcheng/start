@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,28 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BLUEPRINT_PATH = REPO_ROOT / "render.yaml"
+
+EXPECTED_WEB_SERVICES: dict[str, dict[str, Any]] = {
+    "start": {
+        "rootDir": "apps/api",
+        "autoDeployTrigger": "checksPass",
+        "healthCheckPath": "/health",
+        "buildFilter": {"paths": ["apps/api/**"], "ignoredPaths": []},
+        "dockerfilePath": "./Dockerfile.prod",
+        "dockerContext": ".",
+    },
+    "home-accessibility-checker": {
+        "rootDir": "apps/seller-tools/home-accessibility-checker",
+        "autoDeployTrigger": "checksPass",
+        "healthCheckPath": "/health",
+        "buildFilter": {
+            "paths": ["apps/seller-tools/home-accessibility-checker/**"],
+            "ignoredPaths": [],
+        },
+        "buildCommand": "npm ci",
+        "startCommand": "npm start",
+    },
+}
 
 
 def load_blueprint() -> dict[str, Any]:
@@ -99,6 +122,11 @@ def main() -> int:
         action="store_true",
         help="Emit machine-readable JSON instead of a text report.",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Exit non-zero if key monorepo safety settings drift from expectations.",
+    )
     args = parser.parse_args()
 
     blueprint = load_blueprint()
@@ -108,11 +136,47 @@ def main() -> int:
         if service.get("type") == "web"
     ]
 
+    if args.check:
+        return validate_services(services)
+
     if args.json:
         print(json.dumps(services, indent=2))
     else:
         print(format_text(services), end="")
 
+    return 0
+
+
+def validate_services(services: list[dict[str, Any]]) -> int:
+    by_name = {service["name"]: service for service in services}
+    errors: list[str] = []
+
+    for service_name, expected in EXPECTED_WEB_SERVICES.items():
+        actual = by_name.get(service_name)
+        if actual is None:
+            errors.append(f"Missing web service '{service_name}' in {BLUEPRINT_PATH}")
+            continue
+
+        for key, expected_value in expected.items():
+            actual_value = actual.get(key)
+            if actual_value != expected_value:
+                errors.append(
+                    f"{service_name}.{key} expected {expected_value!r} but found {actual_value!r}"
+                )
+
+    unexpected = sorted(set(by_name) - set(EXPECTED_WEB_SERVICES))
+    for service_name in unexpected:
+        errors.append(
+            f"Unexpected web service '{service_name}' present in {BLUEPRINT_PATH}; update the validation rules if this is intentional."
+        )
+
+    if errors:
+        print("Render blueprint validation failed:", file=sys.stderr)
+        for error in errors:
+            print(f" - {error}", file=sys.stderr)
+        return 1
+
+    print("Render blueprint validation passed.")
     return 0
 
 

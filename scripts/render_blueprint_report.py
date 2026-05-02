@@ -19,6 +19,12 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BLUEPRINT_PATH = REPO_ROOT / "render.yaml"
+SELLER_TOOL_PACKAGE = (
+    REPO_ROOT / "apps" / "seller-tools" / "home-accessibility-checker" / "package.json"
+)
+SELLER_TOOL_NODE_VERSION = (
+    REPO_ROOT / "apps" / "seller-tools" / "home-accessibility-checker" / ".node-version"
+)
 
 EXPECTED_WEB_SERVICES: dict[str, dict[str, Any]] = {
     "start": {
@@ -170,6 +176,8 @@ def validate_services(services: list[dict[str, Any]]) -> int:
             f"Unexpected web service '{service_name}' present in {BLUEPRINT_PATH}; update the validation rules if this is intentional."
         )
 
+    errors.extend(validate_seller_tool_runtime_files())
+
     if errors:
         print("Render blueprint validation failed:", file=sys.stderr)
         for error in errors:
@@ -178,6 +186,27 @@ def validate_services(services: list[dict[str, Any]]) -> int:
 
     print("Render blueprint validation passed.")
     return 0
+
+
+def validate_seller_tool_runtime_files() -> list[str]:
+    errors: list[str] = []
+
+    package = json.loads(SELLER_TOOL_PACKAGE.read_text())
+    node_engine = package.get("engines", {}).get("node")
+    expected_engine = ">=22 <23"
+    if node_engine != expected_engine:
+        errors.append(
+            f"seller tool package.json engines.node expected {expected_engine!r} but found {node_engine!r}"
+        )
+
+    node_version = SELLER_TOOL_NODE_VERSION.read_text().strip()
+    expected_version = "22.16.0"
+    if node_version != expected_version:
+        errors.append(
+            f"seller tool .node-version expected {expected_version!r} but found {node_version!r}"
+        )
+
+    return errors
 
 
 if __name__ == "__main__":

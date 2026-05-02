@@ -28,6 +28,16 @@ cd /Users/sammcheng/Desktop/startup/hackmarket
 python3 scripts/render_blueprint_report.py
 ```
 
+You can validate the guarded settings locally with:
+
+```bash
+cd /Users/sammcheng/Desktop/startup/hackmarket
+python3 scripts/render_blueprint_report.py --check
+```
+
+CI also runs this check so root directories, build filters, and the pinned seller
+tool Node version do not silently drift.
+
 ## Expected Settings
 
 ### `start`

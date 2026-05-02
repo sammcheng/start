@@ -40,3 +40,23 @@ def test_public_demo_rate_limit_enforced(client, live_tool, fake_redis, monkeypa
 
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "rate_limit_exceeded"
+
+
+def test_public_demo_timeout_returns_504(client, live_tool, monkeypatch):
+    async def fake_get_tool_by_slug(db, slug):
+        return live_tool
+
+    async def fake_forward_request(**kwargs):
+        raise httpx.ReadTimeout("timed out")
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(tool_service, "get_tool_by_slug", fake_get_tool_by_slug)
+    monkeypatch.setattr(proxy_service, "forward_request", fake_forward_request)
+    monkeypatch.setattr(tool_service, "increment_total_requests", noop)
+
+    response = client.post(f"/v1/tools/{live_tool.slug}/demo", json={"text": "hello"})
+
+    assert response.status_code == 504
+    assert response.json()["error"]["code"] == "TOOL_TIMEOUT"

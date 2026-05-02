@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     cors_origin_regex: str = r"^https://.*\.vercel\.app$"
     app_base_url: str = "http://localhost:3000"
     public_api_base_url: str = ""
+    tool_request_timeout_seconds: int = 30
 
     # Database
     database_url: str

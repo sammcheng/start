@@ -186,3 +186,27 @@ def test_response_time_recorded(client, auth_overrides, buyer, api_key, live_too
 
     assert response.status_code == 200
     assert int(response.headers["X-HackMarket-Response-Time-Ms"]) >= 1
+
+
+def test_gateway_timeout_returns_504(client, auth_overrides, buyer, api_key, live_tool, monkeypatch):
+    auth_overrides(api_key_context=(buyer, api_key))
+
+    async def fake_get_tool_by_slug(db, slug):
+        return live_tool
+
+    async def fake_forward_request(tool, request, body, request_id, tool_path=""):
+        raise httpx.ReadTimeout("timed out")
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(tool_service, "get_tool_by_slug", fake_get_tool_by_slug)
+    monkeypatch.setattr(gateway, "_forward_request", fake_forward_request)
+    monkeypatch.setattr(tool_service, "increment_total_requests", noop)
+    monkeypatch.setattr(tool_service, "flush_total_requests_if_needed", noop)
+    monkeypatch.setattr(usage_service, "create_usage_log", noop)
+
+    response = client.post(f"/api/v1/tools/{live_tool.slug}", headers={"X-API-Key": "hm_live_test"}, json={"text": "hello"})
+
+    assert response.status_code == 504
+    assert response.json()["error"]["code"] == "TOOL_TIMEOUT"

@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, stat
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.dependencies import get_db, get_redis, validate_api_key
 from app.exceptions import RateLimitExceededError, ToolNotFoundError, ToolNotLiveError
 from app.models import APIKey, Tool, User
@@ -87,7 +88,12 @@ async def _proxy_tool_request_impl(
         upstream_content = upstream_response.content
         upstream_headers = proxy_service.filter_response_headers(upstream_response.headers)
         upstream_media_type = upstream_response.headers.get("content-type", "application/json")
-    except httpx.HTTPError as exc:
+    except httpx.TimeoutException:
+        error_message = "The tool took too long to respond."
+        upstream_status_code = status.HTTP_504_GATEWAY_TIMEOUT
+        upstream_content = b'{"error":{"code":"TOOL_TIMEOUT","message":"The tool took too long to respond."}}'
+        upstream_headers = {"content-type": "application/json"}
+    except httpx.HTTPError:
         error_message = "The tool container could not be reached."
         upstream_content = b'{"error":{"code":"TOOL_UNAVAILABLE","message":"The tool container could not be reached."}}'
         upstream_headers = {"content-type": "application/json"}
@@ -150,6 +156,7 @@ async def _forward_request(tool: Tool, request: Request, request_body: bytes, re
         request_id=request_id,
         tool_slug=tool.slug,
         tool_path=tool_path,
+        timeout_seconds=settings.tool_request_timeout_seconds,
     )
 
 

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.dependencies import get_current_user, get_db, get_redis, require_seller
 from app.exceptions import AppError, Forbidden, RateLimitExceededError, ToolNotFoundError, ToolNotLiveError
 from app.models.tool import ToolStatus
@@ -183,11 +184,16 @@ async def run_tool_demo(
             request_body=request_body,
             request_id=request_id,
             tool_slug=tool.slug,
+            timeout_seconds=settings.tool_request_timeout_seconds,
         )
         upstream_status_code = upstream_response.status_code
         upstream_content = upstream_response.content
         upstream_headers = proxy_service.filter_response_headers(upstream_response.headers)
         upstream_media_type = upstream_response.headers.get("content-type", "application/json")
+    except httpx.TimeoutException:
+        upstream_status_code = status.HTTP_504_GATEWAY_TIMEOUT
+        upstream_content = b'{"error":{"code":"TOOL_TIMEOUT","message":"The tool demo took too long to respond."}}'
+        upstream_headers = {"content-type": "application/json"}
     except httpx.HTTPError:
         upstream_content = b'{"error":{"code":"TOOL_UNAVAILABLE","message":"The tool demo could not be reached right now."}}'
         upstream_headers = {"content-type": "application/json"}

@@ -1,12 +1,13 @@
 "use client";
 
 import FileInput from "./FileInput";
+import ImageArrayInput from "./ImageArrayInput";
 import NumberInput from "./NumberInput";
 import TextInput from "./TextInput";
 import URLInput from "./URLInput";
-import type { DemoInputSchema, DemoSchemaField } from "./types";
+import type { DemoFileValue, DemoImageValue, DemoInputSchema, DemoSchemaField } from "./types";
 
-type DynamicValue = Record<string, string | number | boolean | null | { name: string; content: string; mimeType: string }>;
+type DynamicValue = Record<string, string | number | boolean | null | DemoFileValue | DemoImageValue[]>;
 type DynamicFieldValue = DynamicValue[string];
 
 interface DynamicFormProps {
@@ -67,14 +68,25 @@ function FieldRenderer(props: {
   }
 
   if (props.field.type === "file") {
+    if (props.field.name === "images") {
+      return (
+        <ImageArrayInput
+          label={label}
+          value={(props.value as DemoImageValue[] | null) ?? []}
+          onChange={(next) => props.onChange(next)}
+          disabled={props.disabled}
+          error={props.error}
+        />
+      );
+    }
+
     return (
       <FileInput
         label={label}
-        value={(props.value as { name: string; content: string; mimeType: string } | null) ?? null}
+        value={(props.value as DemoFileValue | null) ?? null}
         onChange={(next) => props.onChange(next)}
         disabled={props.disabled}
         error={props.error}
-        accept={props.field.name === "images" ? "image/*" : undefined}
       />
     );
   }

@@ -26,6 +26,19 @@ export interface DemoInputProps<TValue> {
   placeholder?: string;
 }
 
+export interface DemoFileValue {
+  name: string;
+  content: string;
+  mimeType: string;
+}
+
+export interface DemoImageValue {
+  base64: string;
+  previewUrl: string;
+  filename: string;
+  mimeType?: string;
+}
+
 export interface DemoResult {
   data: unknown;
   status: number;

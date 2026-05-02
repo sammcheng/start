@@ -2,13 +2,9 @@
 
 import { useRef } from "react";
 
-import type { DemoInputProps } from "./types";
+import type { DemoImageValue, DemoInputProps } from "./types";
 
-type ImageValue = {
-  base64: string;
-  previewUrl: string;
-  filename: string;
-} | null;
+type ImageValue = DemoImageValue | null;
 
 export default function ImageInput({
   label = "Image input",
@@ -25,6 +21,7 @@ export default function ImageInput({
       base64: dataUrl.split(",")[1] ?? "",
       previewUrl: dataUrl,
       filename: file.name,
+      mimeType: file.type || "image/jpeg",
     });
   }
 

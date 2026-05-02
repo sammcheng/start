@@ -1,14 +1,9 @@
 "use client";
 
 import { useRef } from "react";
+import type { DemoFileValue, DemoInputProps } from "./types";
 
-import type { DemoInputProps } from "./types";
-
-type FileValue = {
-  name: string;
-  content: string;
-  mimeType: string;
-} | null;
+type FileValue = DemoFileValue | null;
 
 interface FileInputExtraProps extends DemoInputProps<FileValue> {
   accept?: string;

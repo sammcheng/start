@@ -13,7 +13,7 @@ import FileOutput from "./FileOutput";
 import ImageOutput from "./ImageOutput";
 import TableOutput from "./TableOutput";
 import TextOutput from "./TextOutput";
-import type { DemoInputSchema, DemoRunnerProps, DemoSchemaField, DemoResult } from "./types";
+import type { DemoFileValue, DemoImageValue, DemoInputSchema, DemoRunnerProps, DemoSchemaField, DemoResult } from "./types";
 import { API_BASE, getGatewayBaseUrl } from "@/lib/api";
 
 const GATEWAY_BASE = getGatewayBaseUrl();
@@ -22,8 +22,9 @@ const DEMO_API_KEY = process.env.NEXT_PUBLIC_DEMO_API_KEY ?? "";
 const SESSION_LIMIT = 10;
 const STORAGE_KEY = "hackmarket-demo-calls";
 
-type FileValue = { name: string; content: string; mimeType: string } | null;
-type ImageValue = { base64: string; previewUrl: string; filename: string } | null;
+type FileValue = DemoFileValue | null;
+type ImageValue = DemoImageValue | null;
+type DynamicDemoValue = Record<string, string | number | boolean | DemoFileValue | DemoImageValue[] | null>;
 
 export default function DemoRunner({
   toolSlug,
@@ -255,8 +256,8 @@ function renderInput(props: {
     return (
       <DynamicForm
         schema={props.schema}
-        value={props.dynamicValue as Record<string, string | number | boolean | null | { name: string; content: string; mimeType: string }>}
-        onChange={props.setDynamicValue as (value: Record<string, string | number | boolean | null | { name: string; content: string; mimeType: string }>) => void}
+        value={props.dynamicValue as DynamicDemoValue}
+        onChange={props.setDynamicValue as (value: DynamicDemoValue) => void}
         disabled={props.disabled}
       />
     );
@@ -381,19 +382,22 @@ function normalizeFieldValue(field: DemoSchemaField, value: unknown) {
     return Number(raw);
   }
   if (field.type === "file") {
+    if (field.name === "images") {
+      const images = Array.isArray(value) ? (value as DemoImageValue[]) : [];
+      if (!images.length) {
+        return undefined;
+      }
+
+      return images.map((image) => ({
+        filename: image.filename,
+        base64: image.base64,
+        mimetype: image.mimeType || "image/jpeg",
+      }));
+    }
+
     const file = value as FileValue;
     if (!file) {
       return undefined;
-    }
-
-    if (field.name === "images") {
-      return [
-        {
-          filename: file.name,
-          base64: file.content,
-          mimetype: file.mimeType,
-        },
-      ];
     }
 
     return {
@@ -409,7 +413,7 @@ function validateDynamicFields(fields: DemoSchemaField[], value: Record<string, 
   const imageField = fields.find((field) => field.name === "images" && field.type === "file");
   const urlField = fields.find((field) => field.name === "url" && field.type === "url");
   if (imageField && urlField) {
-    const hasImage = Boolean(value.images);
+    const hasImage = Array.isArray(value.images) ? value.images.length > 0 : Boolean(value.images);
     const hasUrl = Boolean(String(value.url ?? "").trim());
     if (!hasImage && !hasUrl) {
       return "Provide either a property URL or an image before running the demo.";

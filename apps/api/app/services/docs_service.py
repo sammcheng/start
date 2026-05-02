@@ -28,7 +28,7 @@ def generate_tool_docs(tool: Tool, public_api_base_url: str | None = None) -> To
         ),
         request_format=DocumentationSection(
             title="Request",
-            body=f"Send a {method} request to the endpoint below with a JSON body that matches this tool's declared input schema.",
+            body=_request_format_body(tool, method),
         ),
         response_format=DocumentationSection(
             title="Response",
@@ -53,6 +53,25 @@ def generate_tool_docs(tool: Tool, public_api_base_url: str | None = None) -> To
             DocumentationCodeExample(language="nodejs", label="Node.js", code=_nodejs_example(endpoint_url, request_json)),
         ],
     )
+
+
+def _request_format_body(tool: Tool, method: str) -> str:
+    base = f"Send a {method} request to the endpoint below with a JSON body that matches this tool's declared input schema."
+    schema = tool.input_schema or {}
+    fields = schema.get("fields")
+    if not isinstance(fields, list):
+        return base
+
+    has_url = any(isinstance(field, dict) and str(field.get("name")) == "url" and str(field.get("type")) == "url" for field in fields)
+    has_images = any(isinstance(field, dict) and str(field.get("name")) == "images" and str(field.get("type")) == "file" for field in fields)
+
+    if has_url and has_images:
+        return (
+            f"{base} This tool accepts either a property listing URL or uploaded images. "
+            "If the listing site blocks automated scraping, retry with uploaded photos for the most reliable result."
+        )
+
+    return base
 
 
 def _build_request_example(tool: Tool) -> dict | list | str:

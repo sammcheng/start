@@ -109,8 +109,9 @@ async def ensure_bootstrap_marketplace_data() -> None:
                 github_url="https://github.com/sammcheng/start",
                 documentation=(
                     "Submit either a property listing `url` or an `images` array of processed image "
-                    "payloads. The service returns accessibility findings, an overall score, and "
-                    "recommendations."
+                    "payloads. Listing URLs are best-effort because some sites block automated "
+                    "scraping in production, so direct photo uploads are the most reliable path. "
+                    "The service returns accessibility findings, an overall score, and recommendations."
                 ),
                 avg_response_time_ms=420,
                 uptime_percentage=Decimal("99.90"),
@@ -183,8 +184,9 @@ async def ensure_bootstrap_marketplace_data() -> None:
             )
             tool.documentation = (
                 "Submit either a property listing `url` or an `images` array of processed image "
-                "payloads. The service returns accessibility findings, an overall score, and "
-                "recommendations."
+                "payloads. Listing URLs are best-effort because some sites block automated "
+                "scraping in production, so direct photo uploads are the most reliable path. "
+                "The service returns accessibility findings, an overall score, and recommendations."
             )
 
         await session.commit()

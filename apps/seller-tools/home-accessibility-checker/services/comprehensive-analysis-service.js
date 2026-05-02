@@ -174,6 +174,10 @@ Focus on universal design principles and ADA compliance.`;
      */
     synthesizeResults(analysisResults, comprehensiveResult, allAccessibilityFeatures, allBarriers, allRecommendations, imageCount) {
         const averageScore = Math.round(analysisResults.reduce((sum, result) => sum + (result.vision?.score || 0), 0) / imageCount);
+        const visionModelUsed = analysisResults[0]?.vision?.metadata?.model_used || 'unknown';
+        const comprehensiveModelUsed = comprehensiveResult?.metadata?.model_used || 'unknown';
+        const usedVisionProvider = visionModelUsed !== 'dynamic-analysis';
+        const usedComprehensiveProvider = comprehensiveModelUsed !== 'dynamic-analysis';
         
         // Combine Vision AI and Comprehensive AI insights
         const combinedAccessibilityFeatures = [...new Set([...allAccessibilityFeatures, ...(comprehensiveResult.analysis?.accessibility_features || [])])];
@@ -190,9 +194,14 @@ Focus on universal design principles and ADA compliance.`;
                 recommendations: combinedRecommendations,
                 detailed_results: analysisResults,
                 analysis_methods: {
-                    vision_ai: true,
-                    comprehensive_ai: true,
-                    combined: true
+                    vision_ai: usedVisionProvider,
+                    comprehensive_ai: usedComprehensiveProvider,
+                    combined: usedVisionProvider && usedComprehensiveProvider,
+                    fallback: !usedVisionProvider || !usedComprehensiveProvider
+                },
+                providers: {
+                    vision: visionModelUsed,
+                    comprehensive: comprehensiveModelUsed
                 },
                 confidence: 0.95,
                 accessibility_rating: this.getRatingFromScore(Math.max(averageScore, comprehensiveResult.score || averageScore))
@@ -228,7 +237,8 @@ Focus on universal design principles and ADA compliance.`;
                 analysis_methods: {
                     rekognition: true,
                     claude: false,
-                    combined: false
+                    combined: false,
+                    fallback: true
                 },
                 confidence: this.calculateOverallConfidence(analysisResults),
                 accessibility_rating: this.getRatingFromScore(averageScore)

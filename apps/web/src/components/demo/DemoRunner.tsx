@@ -494,7 +494,43 @@ async function parseResponse(response: Response) {
   if (contentType.includes("application/json")) {
     return await response.json();
   }
-  return await response.text();
+  const text = await response.text();
+  return normalizeGatewayErrorPage(text, response.status, contentType) ?? text;
+}
+
+function normalizeGatewayErrorPage(body: string, status: number, contentType: string) {
+  if (!contentType.includes("text/html") || status < 500) {
+    return null;
+  }
+
+  const normalized = body.toLowerCase();
+  const looksLikeGatewayPage =
+    normalized.includes("bad gateway") ||
+    normalized.includes(">502<") ||
+    normalized.includes("service is currently unavailable");
+
+  if (!looksLikeGatewayPage) {
+    return null;
+  }
+
+  const platform = normalized.includes("powered by render")
+    ? "Render"
+    : normalized.includes("powered by vercel")
+      ? "Vercel"
+      : null;
+  const platformRequestId = body.match(/Request ID:\s*([^\s<]+)/i)?.[1] ?? null;
+
+  return {
+    error: {
+      code: status === 504 ? "TOOL_TIMEOUT" : "TOOL_UNAVAILABLE",
+      message:
+        status === 504
+          ? "The service took too long to respond. Please try again in a minute."
+          : "The service is temporarily unavailable and may be redeploying. Please try again in a minute.",
+      platform,
+      requestId: platformRequestId,
+    },
+  };
 }
 
 function extractImageValue(data: unknown) {

@@ -8,14 +8,18 @@ const winston = require('winston');
 
 class OpenRouterVisionService {
     constructor() {
-        this.openaiClient = new OpenAI({
-            apiKey: process.env.OPENROUTER_API_KEY || '',
-            baseURL: 'https://openrouter.ai/api/v1',
-            defaultHeaders: {
-                'HTTP-Referer': 'http://localhost:3000',
-                'X-Title': 'Accessibility Checker'
-            }
-        });
+        this.apiKey = process.env.OPENROUTER_API_KEY || '';
+        this.requestTimeoutMs = Number(process.env.OPENROUTER_TIMEOUT_MS || 20000);
+        this.openaiClient = this.apiKey
+            ? new OpenAI({
+                apiKey: this.apiKey,
+                baseURL: 'https://openrouter.ai/api/v1',
+                defaultHeaders: {
+                    'HTTP-Referer': process.env.PUBLIC_APP_URL || 'https://hackmarket.ai',
+                    'X-Title': 'Accessibility Checker'
+                }
+            })
+            : null;
         
         this.logger = winston.createLogger({
             level: 'info',
@@ -32,6 +36,11 @@ class OpenRouterVisionService {
     async analyzeAccessibility(base64Image, filename) {
         try {
             this.logger.info('Starting OpenRouter vision analysis', { filename });
+
+            if (!this.openaiClient) {
+                this.logger.warn('OpenRouter API key missing, using dynamic vision analysis fallback', { filename });
+                return this.generateDynamicAnalysis(base64Image, filename);
+            }
 
             const prompt = `Analyze this image for accessibility features and barriers. Look for:
 
@@ -72,28 +81,31 @@ Format your response as JSON with this structure:
   "recommendations": ["recommendation1", "recommendation2"]
 }`;
 
-            const response = await this.openaiClient.chat.completions.create({
-                model: "openai/gpt-4o",
-                messages: [
-                    {
-                        role: "user",
-                        content: [
-                            {
-                                type: "text",
-                                text: prompt
-                            },
-                            {
-                                type: "image_url",
-                                image_url: {
-                                    url: `data:image/jpeg;base64,${base64Image}`
+            const response = await this.withTimeout(
+                this.openaiClient.chat.completions.create({
+                    model: "openai/gpt-4o",
+                    messages: [
+                        {
+                            role: "user",
+                            content: [
+                                {
+                                    type: "text",
+                                    text: prompt
+                                },
+                                {
+                                    type: "image_url",
+                                    image_url: {
+                                        url: `data:image/jpeg;base64,${base64Image}`
+                                    }
                                 }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens: 2000,
-                temperature: 0.3
-            });
+                            ]
+                        }
+                    ],
+                    max_tokens: 2000,
+                    temperature: 0.3
+                }),
+                'OpenRouter vision analysis timed out'
+            );
             
             const analysisText = response.choices[0].message.content;
             
@@ -139,6 +151,21 @@ Format your response as JSON with this structure:
             
             // Fallback: Generate dynamic analysis based on image characteristics
             return this.generateDynamicAnalysis(base64Image, filename);
+        }
+    }
+
+    async withTimeout(promise, timeoutMessage) {
+        let timeoutHandle;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => {
+                reject(new Error(timeoutMessage));
+            }, this.requestTimeoutMs);
+        });
+
+        try {
+            return await Promise.race([promise, timeoutPromise]);
+        } finally {
+            clearTimeout(timeoutHandle);
         }
     }
 

@@ -1,25 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 
-const app = express();
-const port = parseInt(process.env.PORT || '3000', 10);
-const startedAt = Date.now();
-
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || '*')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-    callback(new Error('Origin not allowed'));
-  },
-}));
-app.use(express.json({ limit: '1mb' }));
+const DEFAULT_CATEGORIES = ['support', 'sales', 'billing', 'spam'];
 
 const CATEGORY_KEYWORDS = {
   support: [
@@ -62,9 +44,35 @@ const CATEGORY_KEYWORDS = {
   ],
 };
 
+const app = express();
+const port = Number.parseInt(process.env.PORT || '3000', 10);
+const startedAt = Date.now();
+
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '*')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (
+        !origin ||
+        allowedOrigins.includes('*') ||
+        allowedOrigins.includes(origin)
+      ) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Origin not allowed'));
+    },
+  }),
+);
+app.use(express.json({ limit: '1mb' }));
+
 function sanitizeCategories(inputCategories) {
   if (!Array.isArray(inputCategories) || inputCategories.length === 0) {
-    return ['support', 'sales', 'billing', 'spam'];
+    return DEFAULT_CATEGORIES;
   }
 
   const unique = [];
@@ -72,14 +80,16 @@ function sanitizeCategories(inputCategories) {
     if (typeof value !== 'string') {
       continue;
     }
+
     const normalized = value.trim().toLowerCase();
     if (!normalized || unique.includes(normalized)) {
       continue;
     }
+
     unique.push(normalized);
   }
 
-  return unique.length ? unique : ['support', 'sales', 'billing', 'spam'];
+  return unique.length ? unique : DEFAULT_CATEGORIES;
 }
 
 function scoreCategories(emailText, categories) {
@@ -89,11 +99,13 @@ function scoreCategories(emailText, categories) {
   for (const category of categories) {
     const keywords = CATEGORY_KEYWORDS[category] || [category];
     let score = 0;
+
     for (const phrase of keywords) {
       if (text.includes(phrase)) {
         score += 1;
       }
     }
+
     scores[category] = score;
   }
 
@@ -115,7 +127,7 @@ function toProbabilities(rawScores) {
   return probabilities;
 }
 
-function classifyEmail({ email, categories }) {
+function classifyEmail(email, categories) {
   const resolvedCategories = sanitizeCategories(categories);
   const rawScores = scoreCategories(email, resolvedCategories);
   const probabilities = toProbabilities(rawScores);
@@ -131,16 +143,7 @@ function classifyEmail({ email, categories }) {
   };
 }
 
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'healthy',
-    service: 'email-intent-router',
-    timestamp: new Date().toISOString(),
-    uptimeSeconds: Number(((Date.now() - startedAt) / 1000).toFixed(2)),
-  });
-});
-
-app.post('/classify', (req, res) => {
+function handleClassify(req, res) {
   const { email, categories } = req.body || {};
   if (typeof email !== 'string' || !email.trim()) {
     res.status(400).json({
@@ -150,28 +153,32 @@ app.post('/classify', (req, res) => {
     return;
   }
 
-  const result = classifyEmail({ email: email.trim(), categories });
+  const result = classifyEmail(email.trim(), categories);
   res.json({
     success: true,
     ...result,
     timestamp: new Date().toISOString(),
   });
+}
+
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'email-intent-router',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Number(((Date.now() - startedAt) / 1000).toFixed(2)),
+  });
 });
 
-app.post('/api/analyze', (req, res) => {
-  req.url = '/classify';
-  app._router.handle(req, res);
-});
-
-app.post('/', (req, res) => {
-  req.url = '/classify';
-  app._router.handle(req, res);
-});
+app.post('/classify', handleClassify);
+app.post('/api/analyze', handleClassify);
+app.post('/', handleClassify);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
 app.listen(port, () => {
+  // eslint-disable-next-line no-console
   console.log(`email-intent-router listening on port ${port}`);
 });

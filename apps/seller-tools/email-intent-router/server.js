@@ -170,6 +170,14 @@ app.get('/health', (_req, res) => {
   });
 });
 
+app.get('/', (_req, res) => {
+  res.json({
+    service: 'email-intent-router',
+    status: 'ok',
+    message: 'Use POST /classify with { email, categories? }',
+  });
+});
+
 app.post('/classify', handleClassify);
 app.post('/api/analyze', handleClassify);
 app.post('/', handleClassify);

@@ -45,17 +45,25 @@ class Settings(BaseSettings):
     # App
     debug: bool = False
     environment: str = "development"
-    cors_origins: list[str] = ["http://localhost:3000", "https://hackmarket.io", "https://www.hackmarket.io", "https://web-six-dusky-20.vercel.app"]
+    cors_origins: list[str] = ["http://localhost:3000", "https://hackmarket.io", "https://www.hackmarket.io"]
     cors_origin_regex: str = r"^https://.*\.vercel\.app$"
     app_base_url: str = "http://localhost:3000"
     public_api_base_url: str = ""
     tool_request_timeout_seconds: int = 30
+    max_request_body_bytes: int = 50 * 1024 * 1024  # 50MB
+
+    # Rate limiting
+    gateway_rate_limit_per_minute: int = 100
+    demo_rate_limit_per_hour: int = 10
 
     # Database
     database_url: str
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
 
     # Redis
     redis_url: str = "redis://localhost:6379"
+    redis_max_connections: int = 20
 
     # Stripe
     stripe_secret_key: str = ""
@@ -75,9 +83,27 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
 
+    # Storage
+    local_storage_path: str = "/tmp/hackmarket-storage"
+
     # Marketplace bootstrap
     enable_bootstrap_tool_seed: bool = False
     bootstrap_tool_api_endpoint: str = ""
+    bootstrap_email_tool_api_endpoint: str = ""
+
+    # Render-backed tool deployments
+    render_api_key: str = ""
+    render_owner_id: str = ""
+    render_tool_region: str = "oregon"
+    render_tool_plan: str = "free"
+    render_tool_auto_deploy: bool = False
+    render_tool_healthcheck_path: str = "/health"
+    render_tool_deploy_timeout_seconds: int = 900
+    render_registry_credential_id: str = ""
+    render_registry_credential_name: str = "hackmarket-ghcr"
+    image_registry_namespace: str = ""
+    ghcr_username: str = ""
+    ghcr_token: str = ""
 
     # ---------------------------------------------------------------------------
     # Grouped access

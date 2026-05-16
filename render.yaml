@@ -46,6 +46,36 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: RENDER_API_KEY
+        sync: false
+      - key: RENDER_OWNER_ID
+        sync: false
+      - key: RENDER_TOOL_REGION
+        value: oregon
+      - key: RENDER_TOOL_PLAN
+        value: free
+      - key: RENDER_TOOL_AUTO_DEPLOY
+        value: "false"
+      - key: RENDER_TOOL_HEALTHCHECK_PATH
+        value: /health
+      - key: RENDER_TOOL_DEPLOY_TIMEOUT_SECONDS
+        value: "900"
+      - key: ENABLE_BOOTSTRAP_TOOL_SEED
+        value: "true"
+      - key: BOOTSTRAP_TOOL_API_ENDPOINT
+        value: https://home-accessibility-checker.onrender.com
+      - key: BOOTSTRAP_EMAIL_TOOL_API_ENDPOINT
+        value: https://email-intent-router.onrender.com
+      - key: RENDER_REGISTRY_CREDENTIAL_ID
+        sync: false
+      - key: RENDER_REGISTRY_CREDENTIAL_NAME
+        value: hackmarket-ghcr
+      - key: IMAGE_REGISTRY_NAMESPACE
+        sync: false
+      - key: GHCR_USERNAME
+        sync: false
+      - key: GHCR_TOKEN
+        sync: false
 
   - type: web
     name: home-accessibility-checker
@@ -67,10 +97,43 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: PUBLIC_APP_URL
+        value: https://hackmarket.io
       - key: LOG_LEVEL
         value: info
       - key: OPENROUTER_TIMEOUT_MS
         value: "20000"
+      - key: ANALYSIS_TIMEOUT_MS
+        value: "45000"
+      - key: MAX_FILE_SIZE
+        value: "10485760"
+      - key: MAX_FILES
+        value: "5"
+      - key: MAX_INLINE_IMAGES
+        value: "5"
+      - key: LISTING_FETCH_TIMEOUT_MS
+        value: "10000"
+      - key: REMOTE_IMAGE_FETCH_TIMEOUT_MS
+        value: "10000"
+      - key: MAX_REMOTE_IMAGE_BYTES
+        value: "12582912"
+
+  - type: web
+    name: email-intent-router
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: apps/seller-tools/email-intent-router
+    buildFilter:
+      paths:
+        - apps/seller-tools/email-intent-router/**
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: "*"
 
   - type: keyvalue
     name: hackmarket-redis
